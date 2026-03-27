@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "zzp": {
+      "title": "Opdrachtnemer (ZZP'er)",
+      "description": "Zorgprofessional die werkzaamheden verricht.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Auth UID" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["zzp", "admin"] }
+      },
+      "required": ["uid", "firstName", "lastName", "email", "role"]
+    },
+    "client": {
+      "title": "Opdrachtgever",
+      "description": "Instelling of persoon die zorg inkoopt.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "email": { "type": "string", "format": "email" }
+      },
+      "required": ["name", "email"]
+    },
+    "assignment": {
+      "title": "Opdracht",
+      "description": "Een specifieke opdracht voor een ZZP'er bij een opdrachtgever.",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string", "description": "ID van de opdrachtgever" },
+        "zzpId": { "type": "string", "description": "ID van de ZZP'er" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "hourlyRate": { "type": "number" }
+      },
+      "required": ["clientId", "zzpId", "title", "startDate"]
+    },
+    "timeRegistration": {
+      "title": "Urenregistratie",
+      "description": "Geregistreerde uren voor een opdracht.",
+      "type": "object",
+      "properties": {
+        "assignmentId": { "type": "string" },
+        "zzpId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "breakMinutes": { "type": "number" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "submitted", "approved", "rejected"] },
+        "totalHours": { "type": "number" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "rejectionReason": { "type": "string" }
+      },
+      "required": ["assignmentId", "zzpId", "date", "status", "totalHours"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "zzp",
+      "description": "Gebruikersprofielen (ZZP'ers en Admins)"
+    },
+    "/clients/{clientId}": {
+      "schema": "client",
+      "description": "Lijst van opdrachtgevers"
+    },
+    "/assignments/{assignmentId}": {
+      "schema": "assignment",
+      "description": "Lijst van opdrachten"
+    },
+    "/timeRegistrations/{regId}": {
+      "schema": "timeRegistration",
+      "description": "Urenregistraties"
+    }
+  }
+}
