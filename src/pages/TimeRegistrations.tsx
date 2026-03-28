@@ -21,7 +21,6 @@ const TimeRegistrations: React.FC = () => {
     '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': ''
   });
 
-  // Luister naar de auth-status om het "Laden..." probleem te voorkomen
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
@@ -36,14 +35,18 @@ const TimeRegistrations: React.FC = () => {
   const fetchInitialData = async (currentUser: any) => {
     setLoading(true);
     try {
-      // 1. Haal alle basisdata parallel op
+      // 1. Haal alle data op
       const [userDoc, usersSnap, assignSnap] = await Promise.all([
         getDoc(doc(db, 'users', currentUser.uid)),
         getDocs(collection(db, 'users')),
         getDocs(collection(db, 'assignments'))
       ]);
 
-      const profileData = userDoc.exists() ? { uid: currentUser.uid, ...userDoc.data() } : null;
+      // Zet profiel data
+      const profileData = userDoc.exists() 
+        ? { uid: currentUser.uid, ...userDoc.data() } 
+        : { uid: currentUser.uid, displayName: currentUser.displayName, email: currentUser.email, role: 'zzp' };
+      
       setUserProfile(profileData);
       
       const usersList = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
@@ -52,19 +55,20 @@ const TimeRegistrations: React.FC = () => {
       const allAssignments = assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment));
       setAssignments(allAssignments);
 
-      const isAdmin = profileData?.role === 'admin';
+      const isAdminUser = profileData?.role === 'admin';
       
-      // 2. Initialiseer ZZP-specifieke filters
-      if (!isAdmin) {
+      // 2. Logica voor ZZP'er: Selecteer direct de juiste opdracht
+      if (!isAdminUser) {
         setSelectedZzpUid(currentUser.uid);
+        // Zoek opdrachten voor deze specifieke UID
         const myAssignments = allAssignments.filter(a => a.uid === currentUser.uid);
         if (myAssignments.length > 0) {
           setSelectedAssignmentId(myAssignments[0].id);
         }
       }
 
-      // 3. Haal de urenregistraties op
-      const regQuery = isAdmin 
+      // 3. Haal registraties op
+      const regQuery = isAdminUser 
         ? query(collection(db, 'timeRegistrations'), orderBy('date', 'desc'))
         : query(collection(db, 'timeRegistrations'), where('uid', '==', currentUser.uid), orderBy('date', 'desc'));
 
@@ -72,14 +76,14 @@ const TimeRegistrations: React.FC = () => {
       setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeRegistration)));
 
     } catch (err) {
-      console.error("Fout bij laden data:", err);
+      console.error("Fout in fetchInitialData:", err);
     } finally {
-      setLoading(false); // Zorgt dat de spinner altijd verdwijnt
+      setLoading(false);
     }
   };
 
   const getUserName = (user: any) => {
-    if (!user) return 'Onbekend';
+    if (!user) return 'Laden...';
     return user.displayName || user.email || 'Gebruiker';
   };
 
@@ -87,7 +91,7 @@ const TimeRegistrations: React.FC = () => {
 
   const handleSaveWeek = async () => {
     if (!selectedAssignmentId || !selectedZzpUid) {
-      alert("Selecteer eerst een ZZP'er en een opdracht.");
+      alert("Selecteer een opdracht voordat u opslaat.");
       return;
     }
 
@@ -119,7 +123,7 @@ const TimeRegistrations: React.FC = () => {
         fetchInitialData(auth.currentUser);
         setView('list');
       } catch (err) {
-        console.error("Fout bij opslaan uren:", err);
+        console.error("Batch error:", err);
       }
     }
   };
@@ -129,7 +133,7 @@ const TimeRegistrations: React.FC = () => {
       <header className="flex justify-between items-end">
         <div>
           <h1 className="text-4xl font-black text-[#111827] tracking-tight uppercase">Urenregistratie</h1>
-          <p className="text-gray-500 font-medium">Registreer en beheer gewerkte uren.</p>
+          <p className="text-gray-500 font-medium">Beheer uren en keur ze goed voor facturatie.</p>
         </div>
         
         <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
@@ -143,127 +147,133 @@ const TimeRegistrations: React.FC = () => {
       </header>
 
       {loading ? (
-        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest">Systeem wordt geladen...</div>
-      ) : view === 'week' ? (
-        <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10 animate-in fade-in duration-500">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
-              <div className="w-full p-5 bg-gray-50 rounded-2xl font-bold text-gray-900 border border-transparent">
-                {isAdmin ? (
+        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest">Data ophalen...</div>
+      ) : (
+        <div className="animate-in fade-in duration-500">
+          {view === 'week' ? (
+            <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
+                  <div className="w-full p-5 bg-gray-50 rounded-2xl font-bold text-gray-900 border border-transparent">
+                    {isAdmin ? (
+                      <select 
+                        className="w-full bg-transparent border-none outline-none focus:ring-0"
+                        value={selectedZzpUid}
+                        onChange={(e) => {
+                          setSelectedZzpUid(e.target.value);
+                          setSelectedAssignmentId('');
+                        }}
+                      >
+                        <option value="">Selecteer ZZP'er...</option>
+                        {allUsers.filter(u => u.role === 'zzp').map(u => (
+                          <option key={u.uid} value={u.uid}>{getUserName(u)}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="block">{getUserName(userProfile)}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Actieve Opdracht</label>
                   <select 
-                    className="w-full bg-transparent border-none outline-none focus:ring-0"
-                    value={selectedZzpUid}
-                    onChange={(e) => {
-                      setSelectedZzpUid(e.target.value);
-                      setSelectedAssignmentId('');
-                    }}
+                    className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none transition-all" 
+                    value={selectedAssignmentId} 
+                    onChange={(e) => setSelectedAssignmentId(e.target.value)}
+                    disabled={!selectedZzpUid}
                   >
-                    <option value="">Kies ZZP'er...</option>
-                    {allUsers.filter(u => u.role === 'zzp').map(u => (
-                      <option key={u.uid} value={u.uid}>{getUserName(u)}</option>
+                    <option value="">Kies opdracht...</option>
+                    {assignments.filter(a => a.uid === selectedZzpUid).map(a => (
+                      <option key={a.id} value={a.id}>{a.title}</option>
                     ))}
                   </select>
-                ) : getUserName(userProfile)}
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Actieve Opdracht</label>
-              <select 
-                className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none transition-all" 
-                value={selectedAssignmentId} 
-                onChange={(e) => setSelectedAssignmentId(e.target.value)}
-                disabled={!selectedZzpUid}
-              >
-                <option value="">Selecteer opdracht...</option>
-                {assignments.filter(a => a.uid === selectedZzpUid).map(a => (
-                  <option key={a.id} value={a.id}>{a.title}</option>
+              <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+                {['MA', 'DI', 'WO', 'DO', 'VR', 'ZA', 'ZO'].map((day, idx) => (
+                  <div key={day} className="space-y-3 text-center">
+                    <span className="text-[10px] font-black text-gray-400 tracking-widest">{day}</span>
+                    <input 
+                      type="number" 
+                      step="0.5"
+                      placeholder="0"
+                      value={weekHours[idx]}
+                      onChange={(e) => setWeekHours({...weekHours, [idx]: e.target.value})}
+                      className="w-full p-5 bg-gray-50 rounded-2xl text-center font-black text-xl border-none focus:ring-2 focus:ring-pink-500 outline-none"
+                    />
+                  </div>
                 ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
-            {['MA', 'DI', 'WO', 'DO', 'VR', 'ZA', 'ZO'].map((day, idx) => (
-              <div key={day} className="space-y-3 text-center">
-                <span className="text-[10px] font-black text-gray-400 tracking-widest">{day}</span>
-                <input 
-                  type="number" 
-                  step="0.5"
-                  placeholder="0"
-                  value={weekHours[idx]}
-                  onChange={(e) => setWeekHours({...weekHours, [idx]: e.target.value})}
-                  className="w-full p-5 bg-gray-50 rounded-2xl text-center font-black text-xl border-none focus:ring-2 focus:ring-pink-500 outline-none"
-                />
               </div>
-            ))}
-          </div>
 
-          <button 
-            disabled={!selectedAssignmentId}
-            onClick={handleSaveWeek} 
-            className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl disabled:opacity-20 uppercase tracking-widest"
-          >
-            <Save size={20} /> Weekoverzicht Indienen
-          </button>
-        </div>
-      ) : (
-        <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden animate-in fade-in duration-500">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
-              <tr>
-                <th className="px-8 py-6">Datum</th>
-                {isAdmin && <th className="px-8 py-6">ZZP'er</th>}
-                <th className="px-8 py-6 text-right">Uren</th>
-                <th className="px-8 py-6">Status</th>
-                <th className="px-8 py-6 text-right">Acties</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {registrations.length === 0 ? (
-                <tr>
-                  <td colSpan={isAdmin ? 5 : 4} className="px-8 py-10 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Geen data gevonden</td>
-                </tr>
-              ) : (
-                registrations.map(reg => {
-                  const zzp = allUsers.find(u => u.uid === reg.uid);
-                  return (
-                    <tr key={reg.id} className="hover:bg-gray-50/30 transition-colors group">
-                      <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
-                      {isAdmin && <td className="px-8 py-5 font-bold">{getUserName(zzp)}</td>}
-                      <td className="px-8 py-5 text-right font-black text-gray-900">{reg.duration}u</td>
-                      <td className="px-8 py-5">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
-                          reg.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-                        }`}>
-                          {reg.status === 'approved' ? 'Goedgekeurd' : 'Wacht op akkoord'}
-                        </span>
-                      </td>
-                      <td className="px-8 py-5 text-right flex justify-end gap-2">
-                        {isAdmin && reg.status === 'pending' && (
-                          <button onClick={async () => {
-                            await updateDoc(doc(doc(db, 'timeRegistrations', reg.id)), { status: 'approved' });
-                            fetchInitialData(auth.currentUser);
-                          }} className="p-2 text-gray-300 hover:text-green-600 transition-all">
-                            <CheckCircle2 size={18} />
-                          </button>
-                        )}
-                        <button onClick={async () => {
-                           if(window.confirm("Verwijderen?")) {
-                             await deleteDoc(doc(db, 'timeRegistrations', reg.id));
-                             fetchInitialData(auth.currentUser);
-                           }
-                        }} className="p-2 text-gray-300 hover:text-red-600 transition-all opacity-0 group-hover:opacity-100">
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
+              <button 
+                disabled={!selectedAssignmentId}
+                onClick={handleSaveWeek} 
+                className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl disabled:opacity-20 uppercase tracking-widest"
+              >
+                <Save size={20} /> Weekoverzicht Opslaan
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
+              <table className="w-full text-left">
+                <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  <tr>
+                    <th className="px-8 py-6">Datum</th>
+                    {isAdmin && <th className="px-8 py-6">ZZP'er</th>}
+                    <th className="px-8 py-6 text-right">Uren</th>
+                    <th className="px-8 py-6">Status</th>
+                    <th className="px-8 py-6 text-right">Acties</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {registrations.length === 0 ? (
+                    <tr>
+                      <td colSpan={isAdmin ? 5 : 4} className="px-8 py-10 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Geen data gevonden</td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                  ) : (
+                    registrations.map(reg => {
+                      const zzp = allUsers.find(u => u.uid === reg.uid);
+                      return (
+                        <tr key={reg.id} className="hover:bg-gray-50/30 transition-colors group">
+                          <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
+                          {isAdmin && <td className="px-8 py-5 font-bold">{getUserName(zzp)}</td>}
+                          <td className="px-8 py-5 text-right font-black text-gray-900">{reg.duration}u</td>
+                          <td className="px-8 py-5">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
+                              reg.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                            }`}>
+                              {reg.status === 'approved' ? 'Goedgekeurd' : 'Wacht op akkoord'}
+                            </span>
+                          </td>
+                          <td className="px-8 py-5 text-right flex justify-end gap-2">
+                            {isAdmin && reg.status === 'pending' && (
+                              <button onClick={async () => {
+                                await updateDoc(doc(db, 'timeRegistrations', reg.id), { status: 'approved' });
+                                fetchInitialData(auth.currentUser);
+                              }} className="p-2 text-gray-300 hover:text-green-600 transition-all">
+                                <CheckCircle2 size={18} />
+                              </button>
+                            )}
+                            <button onClick={async () => {
+                               if(window.confirm("Verwijderen?")) {
+                                 await deleteDoc(doc(db, 'timeRegistrations', reg.id));
+                                 fetchInitialData(auth.currentUser);
+                               }
+                            }} className="p-2 text-gray-300 hover:text-red-600 transition-all opacity-0 group-hover:opacity-100">
+                              <Trash2 size={18} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
