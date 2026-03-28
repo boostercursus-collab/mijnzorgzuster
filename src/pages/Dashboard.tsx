@@ -1,163 +1,143 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
-import { useAuth } from '../AuthProvider';
-import { TimeRegistration, Assignment } from '../types';
-import { 
-  Clock, 
-  CheckCircle2, 
-  Calendar, 
-  Briefcase, 
-  ChevronRight,
-  AlertCircle
-} from 'lucide-react';
-import { format, startOfMonth, parseISO } from 'date-fns';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { db, auth } from '../firebase';
+import { TimeRegistration, Assignment, UserProfile } from '../types';
+import { Clock, Euro, Briefcase, Users, TrendingUp } from 'lucide-react';
+import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
 const Dashboard: React.FC = () => {
-  const { profile } = useAuth();
+  const [registrations, setRegistrations] = useState<TimeRegistration[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    pendingHours: 0,
-    approvedHours: 0,
-    totalThisMonth: 0,
-    activeAssignments: 0
-  });
-  const [recentRegistrations, setRecentRegistrations] = useState<TimeRegistration[]>([]);
 
   useEffect(() => {
-    if (profile?.uid) {
-      fetchDashboardData();
-    }
-  }, [profile]);
+    fetchInitialData();
+  }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchInitialData = async () => {
+    setLoading(true);
     try {
-      // 1. Query aanpassen van 'zzpId' naar 'uid'
-      const regsQuery = query(
-        collection(db, 'timeRegistrations'),
-        where('uid', '==', profile?.uid) // CRUCIAL: Moet 'uid' zijn voor de nieuwe Rules
-      );
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
 
-      const assignmentsQuery = query(
-        collection(db, 'assignments'),
-        where('status', '==', 'active')
-      );
+      // 1. Haal eerst het profiel van de huidige gebruiker op om de rol te checken
+      const userSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', currentUser.uid)));
+      const profile = userSnap.docs[0]?.data() as UserProfile;
+      setUserProfile(profile);
 
-      const [regsSnap, assignmentsSnap] = await Promise.all([
-        getDocs(regsQuery),
-        getDocs(assignmentsQuery)
+      const isAdmin = profile?.role === 'admin';
+
+      // 2. Stel de queries in op basis van de rol
+      const regQuery = isAdmin 
+        ? query(collection(db, 'timeRegistrations'), orderBy('date', 'desc'))
+        : query(collection(db, 'timeRegistrations'), where('uid', '==', currentUser.uid), orderBy('date', 'desc'));
+
+      const assignQuery = isAdmin
+        ? collection(db, 'assignments')
+        : query(collection(db, 'assignments'), where('uid', '==', currentUser.uid));
+
+      // 3. Haal de data op
+      const [regSnap, assignSnap, allUsersSnap] = await Promise.all([
+        getDocs(regQuery),
+        getDocs(assignQuery),
+        isAdmin ? getDocs(collection(db, 'users')) : Promise.resolve({ docs: [] })
       ]);
 
-      const regs = regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRegistration));
-      const currentMonth = format(new Date(), 'yyyy-MM');
-
-      const dashboardStats = regs.reduce((acc, reg) => {
-        if (reg.status === 'pending') acc.pendingHours += reg.totalHours;
-        if (reg.status === 'approved') acc.approvedHours += reg.totalHours;
-        if (reg.date.startsWith(currentMonth)) acc.totalThisMonth += reg.totalHours;
-        return acc;
-      }, { pendingHours: 0, approvedHours: 0, totalThisMonth: 0, activeAssignments: assignmentsSnap.size });
-
-      setStats(dashboardStats);
+      setRegistrations(regSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRegistration)));
+      setAssignments(assignSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Assignment)));
       
-      // Sorteer recentste handmatig als de index nog niet klaar is
-      const sortedRegs = regs
-        .sort((a, b) => b.date.localeCompare(a.date))
-        .slice(0, 5);
-        
-      setRecentRegistrations(sortedRegs);
+      if (isAdmin) {
+        setAllUsers(allUsersSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
+      }
     } catch (error) {
-      console.error('Fout bij laden dashboard:', error);
+      console.error('Error fetching dashboard data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) return <div className="p-12 text-center text-pink-600 font-bold">Dashboard laden...</div>;
+  // Berekeningen
+  const isAdmin = userProfile?.role === 'admin';
+  const totalHours = registrations.reduce((acc, reg) => acc + reg.duration, 0);
+  const totalRevenue = registrations.reduce((acc, reg) => {
+    const assignment = assignments.find(a => a.id === reg.assignmentId);
+    return acc + (reg.duration * (assignment?.hourlyRate || 0));
+  }, 0);
 
-  const cards = [
-    { label: 'Wachtend', value: `${stats.pendingHours.toFixed(1)}`, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' },
-    { label: 'Goedgekeurd', value: `${stats.approvedHours.toFixed(1)}`, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'Deze maand', value: `${stats.totalThisMonth.toFixed(1)}`, icon: Calendar, color: 'text-pink-600', bg: 'bg-pink-50' },
-    { label: 'Opdrachten', value: `${stats.activeAssignments}`, icon: Briefcase, color: 'text-blue-600', bg: 'bg-blue-50' },
-  ];
+  const getZzpName = (uid: string) => {
+    if (!isAdmin) return 'Ik';
+    const user = allUsers.find(u => u.uid === uid);
+    return user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Onbekend';
+  };
+
+  if (loading) return <div className="p-12 text-center font-bold text-pink-600">Laden...</div>;
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-4 py-8">
-      <header>
-        <h1 className="text-4xl font-black text-gray-900 flex items-center gap-3">
-          Welkom, 👋
+      <div>
+        <h1 className="text-4xl font-black text-gray-900">
+          {isAdmin ? 'Admin Dashboard' : `Welkom, ${userProfile?.firstName}`}
         </h1>
-        <p className="text-gray-500 font-bold mt-1 uppercase tracking-widest text-sm">
-          Overzicht voor <span className="text-pink-600">{format(new Date(), 'MMMM yyyy', { locale: nl })}</span>
+        <p className="text-gray-500 font-medium">
+          {isAdmin ? 'Overzicht van alle ZZP-activiteiten' : 'Jouw persoonlijke uren en verdiensten'}
         </p>
-      </header>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {cards.map((card) => (
-          <div key={card.label} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-            <div className={`w-12 h-12 ${card.bg} rounded-2xl flex items-center justify-center mb-6`}>
-              <card.icon className={`h-6 w-6 ${card.color}`} />
-            </div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-1">{card.label}</p>
-            <div className="flex items-baseline space-x-1">
-              <span className="text-3xl font-black text-gray-900">{card.value}</span>
-              {card.label.includes('uur') && <span className="text-gray-400 font-bold">uur</span>}
-            </div>
-          </div>
-        ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Recente uren */}
-        <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-gray-50 flex justify-between items-center">
-            <h2 className="font-black text-gray-900 uppercase tracking-widest text-sm flex items-center gap-2">
-              <Clock className="h-4 w-4 text-pink-600" />
-              Recente Registraties
-            </h2>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {recentRegistrations.map((reg) => (
-              <div key={reg.id} className="p-6 hover:bg-gray-50 transition-colors flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="bg-gray-100 h-12 w-12 rounded-2xl flex flex-col items-center justify-center text-gray-500">
-                    <span className="text-[10px] font-black leading-none">{format(parseISO(reg.date), 'MMM', { locale: nl }).toUpperCase()}</span>
-                    <span className="text-lg font-black leading-none">{format(parseISO(reg.date), 'dd')}</span>
-                  </div>
-                  <div>
-                    <p className="font-black text-gray-900">{reg.totalHours.toFixed(1)} uur gewerkt</p>
-                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">{reg.status}</p>
-                  </div>
-                </div>
-                <ChevronRight className="h-5 w-5 text-gray-300" />
-              </div>
-            ))}
-            {recentRegistrations.length === 0 && (
-              <div className="p-20 text-center">
-                <AlertCircle className="h-12 w-12 text-gray-100 mx-auto mb-4" />
-                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Nog geen uren geregistreerd</p>
-              </div>
-            )}
-          </div>
-        </div>
+      {/* KPI Kaarten */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <StatCard icon={<Clock />} label="Uren" value={`${totalHours.toFixed(1)}u`} color="bg-blue-500" />
+        <StatCard icon={<Euro />} label="Omzet" value={`€${totalRevenue.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`} color="bg-green-500" />
+        <StatCard icon={<Briefcase />} label="Opdrachten" value={assignments.length.toString()} color="bg-pink-500" />
+      </div>
 
-        {/* Info Card */}
-        <div className="bg-gradient-to-br from-pink-500 to-pink-600 rounded-[2.5rem] p-10 text-white shadow-xl shadow-pink-100 relative overflow-hidden group">
-          <div className="relative z-10">
-            <h3 className="text-2xl font-black mb-4">Hulp nodig?</h3>
-            <p className="text-pink-100 font-bold mb-8 opacity-90">Heb je vragen over je uitbetaling of urenregistratie? Neem contact op met support.</p>
-            <button className="w-full bg-white text-pink-600 font-black py-4 rounded-2xl hover:bg-pink-50 transition-colors shadow-lg">
-              Contact Support
-            </button>
-          </div>
-          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700"></div>
+      <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-8 border-b border-gray-50 flex justify-between items-center">
+          <h2 className="text-xl font-black">Laatste Registraties</h2>
+          <TrendingUp className="text-gray-300" />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
+              <tr>
+                <th className="px-8 py-4">Datum</th>
+                {isAdmin && <th className="px-8 py-4">ZZP'er</th>}
+                <th className="px-8 py-4">Opdracht</th>
+                <th className="px-8 py-4">Uren</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {registrations.slice(0, 10).map(reg => {
+                const assignment = assignments.find(a => a.id === reg.assignmentId);
+                return (
+                  <tr key={reg.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-8 py-4 font-medium">{format(new Date(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
+                    {isAdmin && <td className="px-8 py-4 font-bold text-pink-600">{getZzpName(reg.uid)}</td>}
+                    <td className="px-8 py-4 text-gray-600">{assignment?.title || 'Onbekend'}</td>
+                    <td className="px-8 py-4 font-black">{reg.duration}u</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   );
 };
+
+const StatCard = ({ icon, label, value, color }: { icon: any, label: string, value: string, color: string }) => (
+  <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex items-center space-x-6">
+    <div className={`${color} p-4 rounded-2xl text-white shadow-lg`}>
+      {React.cloneElement(icon, { size: 28 })}
+    </div>
+    <div>
+      <p className="text-xs font-black uppercase text-gray-400 tracking-widest mb-1">{label}</p>
+      <p className="text-2xl font-black text-gray-900">{value}</p>
+    </div>
+  </div>
+);
 
 export default Dashboard;
