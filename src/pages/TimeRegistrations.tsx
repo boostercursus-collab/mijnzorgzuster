@@ -7,7 +7,6 @@ import { Plus, Pencil, Trash2, Check, Clock, Send, Calendar as CalendarIcon, Che
 import { format, differenceInMinutes, parse, startOfWeek, addDays, isSameDay, endOfWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
-// Helper voor classNames
 const cn = (...classes: any[]) => classes.filter(Boolean).join(' ');
 
 const TimeRegistrations: React.FC = () => {
@@ -36,7 +35,7 @@ const TimeRegistrations: React.FC = () => {
     if (!profile?.uid) return;
     setLoading(true);
     try {
-      // 1. Haal opdrachten op (gefilterd op rol)
+      // 1. Haal opdrachten op
       const assignRef = collection(db, 'assignments');
       const assignQuery = profile.role === 'admin' 
         ? query(assignRef) 
@@ -50,7 +49,7 @@ const TimeRegistrations: React.FC = () => {
         setSelectedAssignmentId(fetchedAssignments[0].id);
       }
 
-      // 2. Haal users op voor namen (alleen admin hoeft dit eigenlijk te doen)
+      // 2. Haal users op voor namen
       const usersSnap = await getDocs(collection(db, 'users'));
       const usersMap: Record<string, string> = {};
       usersSnap.docs.forEach(doc => {
@@ -58,7 +57,7 @@ const TimeRegistrations: React.FC = () => {
         usersMap[doc.id] = u.displayName || `${u.firstName || ''} ${u.lastName || ''}`.trim();
       });
 
-      // 3. Haal registraties op
+      // 3. Haal registraties op - Let op de Index in Firestore!
       const regsRef = collection(db, 'timeRegistrations');
       const regsQuery = profile.role === 'admin'
         ? query(regsRef, orderBy('date', 'desc'))
@@ -83,7 +82,7 @@ const TimeRegistrations: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  // Update timesheetData als de week of de geselecteerde opdracht verandert
+  // Update timesheetData: Cruciale fix voor weergave eigen uren
   useEffect(() => {
     if (viewMode === 'timesheet') {
       const newTimesheetData: typeof timesheetData = {};
@@ -91,7 +90,12 @@ const TimeRegistrations: React.FC = () => {
       
       weekDays.forEach(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
-        const existing = registrations.find(r => r.date === dateStr && r.assignmentId === selectedAssignmentId);
+        // Filter op datum, opdracht EN zzpId (behalve voor admin die alles mag zien)
+        const existing = registrations.find(r => 
+          r.date === dateStr && 
+          r.assignmentId === selectedAssignmentId &&
+          (profile?.role === 'admin' ? true : r.zzpId === profile?.uid)
+        );
         newTimesheetData[dateStr] = {
           totalHours: existing ? existing.totalHours.toString() : '',
           description: existing?.description || ''
@@ -99,7 +103,7 @@ const TimeRegistrations: React.FC = () => {
       });
       setTimesheetData(newTimesheetData);
     }
-  }, [currentWeekStart, selectedAssignmentId, registrations, viewMode]);
+  }, [currentWeekStart, selectedAssignmentId, registrations, viewMode, profile]);
 
   const calculateHours = (start: string, end: string, breakMin: number) => {
     try {
@@ -161,7 +165,13 @@ const TimeRegistrations: React.FC = () => {
         const dateStr = format(day, 'yyyy-MM-dd');
         const entry = timesheetData[dateStr];
         const hours = parseFloat(entry?.totalHours || '0');
-        const existing = registrations.find(r => r.date === dateStr && r.assignmentId === selectedAssignmentId);
+        
+        // Zoek bestaande registratie specifiek voor deze gebruiker
+        const existing = registrations.find(r => 
+          r.date === dateStr && 
+          r.assignmentId === selectedAssignmentId &&
+          (profile.role === 'admin' ? true : r.zzpId === profile.uid)
+        );
 
         if (hours <= 0) {
           if (existing && existing.status === 'draft') await deleteDoc(doc(db, 'timeRegistrations', existing.id));
@@ -173,11 +183,12 @@ const TimeRegistrations: React.FC = () => {
           zzpId: profile.role === 'admin' ? currentAssignment?.zzpId : profile.uid,
           date: dateStr,
           totalHours: hours,
-          description: entry.description,
+          description: entry.description || '',
           status: submit ? 'submitted' : (existing?.status || 'draft'),
           startTime: existing?.startTime || '09:00',
-          endTime: existing?.endTime || '17:00', // Default indien niet gezet
-          breakMinutes: existing?.breakMinutes || 0
+          endTime: existing?.endTime || '17:00',
+          breakMinutes: existing?.breakMinutes || 0,
+          updatedAt: new Date().toISOString()
         };
 
         if (submit) payload.submittedAt = new Date().toISOString();
@@ -187,7 +198,7 @@ const TimeRegistrations: React.FC = () => {
             await updateDoc(doc(db, 'timeRegistrations', existing.id), payload);
           }
         } else {
-          await addDoc(collection(db, 'timeRegistrations'), payload);
+          await addDoc(collection(db, 'timeRegistrations'), { ...payload, createdAt: new Date().toISOString() });
         }
       }
       await fetchData();
@@ -212,9 +223,9 @@ const TimeRegistrations: React.FC = () => {
 
   const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(currentWeekStart, i));
 
+  // --- Rendering (ongewijzigd qua UI, functioneel gekoppeld aan nieuwe logica) ---
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-gray-900">Urenregistratie</h1>
@@ -249,7 +260,6 @@ const TimeRegistrations: React.FC = () => {
         </div>
       </div>
 
-      {/* Timesheet View */}
       {viewMode === 'timesheet' ? (
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
@@ -317,7 +327,6 @@ const TimeRegistrations: React.FC = () => {
           </div>
         </div>
       ) : (
-        /* List View */
         <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
           <table className="w-full text-left">
             <thead className="bg-gray-50/50 border-b">
@@ -371,7 +380,6 @@ const TimeRegistrations: React.FC = () => {
         </div>
       )}
 
-      {/* Modal - Alleen voor de 'Lijst' weergave (Nieuwe Dag) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
@@ -411,39 +419,3 @@ const TimeRegistrations: React.FC = () => {
                   </div>
                   <div>
                     <label className="text-xs font-black uppercase text-gray-400 mb-2 block">Eind</label>
-                    <input type="time" value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} className="w-full border-gray-200 rounded-xl focus:ring-pink-500 focus:border-pink-500" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-black uppercase text-gray-400 mb-2 block">Wat heb je gedaan?</label>
-                  <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full border-gray-200 rounded-xl focus:ring-pink-500 focus:border-pink-500" rows={3} />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-colors">Annuleren</button>
-                  <button type="submit" disabled={isSaving} className="flex-1 bg-pink-600 text-white px-4 py-3 rounded-xl font-bold shadow-lg shadow-pink-200 hover:bg-pink-700 disabled:bg-gray-400 transition-all">
-                    {isSaving ? 'Bezig...' : 'Opslaan'}
-                  </button>
-                </div>
-             </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Sub-component voor Status Badge
-const StatusBadge = ({ status }: { status: RegistrationStatus }) => {
-  const config = {
-    draft: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Concept' },
-    submitted: { bg: 'bg-blue-100', text: 'text-blue-600', label: 'Ingeleverd' },
-    approved: { bg: 'bg-green-100', text: 'text-green-600', label: 'Akkoord' },
-    rejected: { bg: 'bg-red-100', text: 'text-red-600', label: 'Geweigerd' }
-  };
-  const { bg, text, label } = config[status] || config.draft;
-  return <span className={cn("px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider", bg, text)}>{label}</span>;
-};
-
-export default TimeRegistrations;
