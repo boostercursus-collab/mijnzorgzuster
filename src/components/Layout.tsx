@@ -43,7 +43,7 @@ const Layout: React.FC = () => {
       <aside className="hidden w-64 flex-col border-r bg-white md:flex">
         <div className="flex h-20 items-center justify-center border-bottom p-4">
           <img 
-            src="https://www.mijnezorgzuster.nl/wp-content/uploads/2021/04/Logo-Mijn-Zorgzuster-RGB-1.png" 
+            src="https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg" 
             alt="Mijn Zorgzuster" 
             className="h-12 object-contain"
           />
@@ -80,7 +80,7 @@ const Layout: React.FC = () => {
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex h-16 items-center justify-between border-b bg-white px-4 md:hidden">
           <img 
-            src="https://www.mijnezorgzuster.nl/wp-content/uploads/2021/04/Logo-Mijn-Zorgzuster-RGB-1.png" 
+            src="https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg" 
             alt="Mijn Zorgzuster" 
             className="h-8 object-contain"
           />
@@ -94,7 +94,7 @@ const Layout: React.FC = () => {
           <div className="fixed inset-0 z-50 bg-white md:hidden">
             <div className="flex h-16 items-center justify-between border-b px-4">
               <img 
-                src="https://www.mijnezorgzuster.nl/wp-content/uploads/2021/04/Logo-Mijn-Zorgzuster-RGB-1.png" 
+                src="https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg" 
                 alt="Mijn Zorgzuster" 
                 className="h-8 object-contain"
               />
