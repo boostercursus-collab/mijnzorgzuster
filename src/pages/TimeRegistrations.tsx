@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { TimeRegistration, Assignment, UserProfile } from '../types';
-import { Calendar, List, Save, CheckCircle, Trash2, CheckCircle2 } from 'lucide-react';
+import { TimeRegistration, Assignment } from '../types';
+import { Calendar, List, Save, Trash2, ClipboardList } from 'lucide-react';
 import { format, startOfWeek, addDays, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -11,7 +11,7 @@ const TimeRegistrations: React.FC = () => {
   const [currentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [registrations, setRegistrations] = useState<TimeRegistration[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [allUsers, setAllUsers] = useState<any[]>([]); // 'any' omdat de velden afwijken
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   
@@ -31,25 +31,28 @@ const TimeRegistrations: React.FC = () => {
     if (!user) return;
 
     try {
-      // Haal data op
       const [userDoc, usersSnap, assignSnap] = await Promise.all([
         getDoc(doc(db, 'users', user.uid)),
-        getDocs(collection(db, 'users')), // Haal alle users op voor namen
+        getDocs(collection(db, 'users')),
         getDocs(collection(db, 'assignments'))
       ]);
 
       const profile = { uid: user.uid, ...userDoc.data() } as any;
-      const zzpList = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
-      
       setUserProfile(profile);
-      setAllUsers(zzpList);
-      setAssignments(assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment)));
+      setAllUsers(usersSnap.docs.map(d => ({ uid: d.id, ...d.data() })));
+      
+      const allAssignments = assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment));
+      setAssignments(allAssignments);
 
       const isAdmin = profile.role === 'admin';
-
-      // Selectie logica
+      
       if (!isAdmin) {
         setSelectedZzpUid(user.uid);
+        // Filter direct de opdrachten voor deze ZZP'er
+        const myAssignments = allAssignments.filter(a => a.uid === user.uid);
+        if (myAssignments.length === 1) {
+          setSelectedAssignmentId(myAssignments[0].id);
+        }
       }
 
       const regQuery = isAdmin 
@@ -60,42 +63,88 @@ const TimeRegistrations: React.FC = () => {
       setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeRegistration)));
 
     } catch (err) {
-      console.error("Fout:", err);
+      console.error("Fout bij ophalen data:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Helper functie om de naam veilig op te halen uit jouw database velden
   const getUserName = (user: any) => {
     if (!user) return 'Onbekend';
-    return user.displayName || user.email || 'Naamloze Gebruiker';
+    return user.displayName || user.email || 'Gebruiker';
   };
 
   const isAdmin = userProfile?.role === 'admin';
 
+  const handleSaveWeek = async () => {
+    if (!selectedAssignmentId || !selectedZzpUid) {
+      alert("Selecteer eerst een ZZP'er en een opdracht.");
+      return;
+    }
+
+    const batch = writeBatch(db);
+    let hasData = false;
+
+    Object.entries(weekHours).forEach(([index, hours]) => {
+      const numHours = parseFloat(hours);
+      if (numHours > 0) {
+        hasData = true;
+        const date = format(addDays(currentWeekStart, parseInt(index)), 'yyyy-MM-dd');
+        const newRegRef = doc(collection(db, 'timeRegistrations'));
+        batch.set(newRegRef, {
+          uid: selectedZzpUid,
+          assignmentId: selectedAssignmentId,
+          date,
+          duration: numHours,
+          status: 'pending',
+          createdAt: serverTimestamp()
+        });
+      }
+    });
+
+    if (hasData) {
+      try {
+        await batch.commit();
+        alert("Weekoverzicht succesvol opgeslagen!");
+        setWeekHours({'0':'','1':'','2':'','3':'','4':'','5':'','6':''});
+        fetchInitialData();
+        setView('list');
+      } catch (err) {
+        console.error("Opslaan mislukt:", err);
+      }
+    } else {
+      alert("Vul tenminste één dag in met uren.");
+    }
+  };
+
   return (
     <div className="p-8 space-y-6 max-w-7xl mx-auto">
-      <header className="flex justify-between items-end">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl font-black text-gray-900 tracking-tight uppercase">Urenregistratie</h1>
-          <p className="text-gray-500 font-medium text-lg">Beheer uren voor facturatie.</p>
+          <p className="text-gray-500 font-medium text-lg">Registreer en beheer gewerkte uren.</p>
         </div>
         
-        <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
-          <button onClick={() => setView('list')} className={`px-5 py-2.5 rounded-xl transition-all ${view === 'list' ? 'bg-pink-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
-            <List size={20} />
+        <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 w-fit">
+          <button 
+            onClick={() => setView('list')} 
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${view === 'list' ? 'bg-pink-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}
+          >
+            <List size={20} /> Lijst
           </button>
-          <button onClick={() => setView('week')} className={`px-5 py-2.5 rounded-xl transition-all ${view === 'week' ? 'bg-pink-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
-            <Calendar size={20} />
+          <button 
+            onClick={() => setView('week')} 
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${view === 'week' ? 'bg-pink-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}
+          >
+            <Calendar size={20} /> Week
           </button>
         </div>
       </header>
 
       {loading ? (
-        <div className="p-20 text-center font-black text-pink-600 animate-pulse tracking-widest uppercase">Laden...</div>
+        <div className="p-20 text-center font-black text-pink-600 animate-pulse tracking-widest uppercase">Data wordt geladen...</div>
       ) : view === 'week' ? (
-        <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10">
+        <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10 animate-in fade-in duration-500">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-3">
               <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
@@ -119,7 +168,7 @@ const TimeRegistrations: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Opdracht</label>
+              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Actieve Opdracht</label>
               <select 
                 className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none transition-all disabled:opacity-50" 
                 disabled={!selectedZzpUid} 
@@ -134,74 +183,83 @@ const TimeRegistrations: React.FC = () => {
             </div>
           </div>
 
-          {/* Weekoverzicht Inputs en Opslaan knop (zelfde als voorheen, maar met juiste namen) */}
-          {/* ... (rest van de week-view code) */}
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+            {['MA', 'DI', 'WO', 'DO', 'VR', 'ZA', 'ZO'].map((day, idx) => (
+              <div key={day} className="space-y-3 text-center">
+                <span className="text-[10px] font-black text-gray-400 tracking-widest">{day}</span>
+                <input 
+                  type="number" 
+                  step="0.5"
+                  placeholder="0"
+                  value={weekHours[idx]}
+                  onChange={(e) => setWeekHours({...weekHours, [idx]: e.target.value})}
+                  className="w-full p-5 bg-gray-50 rounded-2xl text-center font-black text-xl border-none focus:ring-2 focus:ring-pink-500 transition-all outline-none"
+                />
+              </div>
+            ))}
+          </div>
+
           <button 
             disabled={!selectedAssignmentId}
-            onClick={async () => {
-              const batch = writeBatch(db);
-              let hasData = false;
-              Object.entries(weekHours).forEach(([index, hours]) => {
-                if (parseFloat(hours) > 0) {
-                  hasData = true;
-                  const date = format(addDays(currentWeekStart, parseInt(index)), 'yyyy-MM-dd');
-                  batch.set(doc(collection(db, 'timeRegistrations')), {
-                    uid: selectedZzpUid, assignmentId: selectedAssignmentId, date, duration: parseFloat(hours), status: 'pending', createdAt: new Date().toISOString()
-                  });
-                }
-              });
-              if (hasData) { 
-                await batch.commit(); 
-                alert("Opgeslagen!"); 
-                setWeekHours({'0':'','1':'','2':'','3':'','4':'','5':'','6':''}); 
-                fetchInitialData(); 
-              }
-            }} 
-            className="w-full bg-[#111827] text-white py-6 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl disabled:opacity-20 uppercase"
+            onClick={handleSaveWeek} 
+            className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl disabled:opacity-20 uppercase tracking-widest"
           >
-            <Save size={20} /> Weekoverzicht Opslaan
+            <Save size={20} /> Weekoverzicht Indienen
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
-              <tr>
-                <th className="px-8 py-6">Datum</th>
-                {isAdmin && <th className="px-8 py-6">ZZP'er</th>}
-                <th className="px-8 py-6 text-right">Uren</th>
-                <th className="px-8 py-6 text-right">Acties</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {registrations.map(reg => {
-                const zzp = allUsers.find(u => u.uid === reg.uid);
-                return (
-                  <tr key={reg.id} className="hover:bg-gray-50/30 transition-colors">
-                    <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
-                    {isAdmin && (
+        <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden animate-in fade-in duration-500">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="px-8 py-6">Datum</th>
+                  {isAdmin && <th className="px-8 py-6">ZZP'er</th>}
+                  <th className="px-8 py-6 text-right">Uren</th>
+                  <th className="px-8 py-6">Status</th>
+                  <th className="px-8 py-6 text-right">Acties</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {registrations.map(reg => {
+                  const zzp = allUsers.find(u => u.uid === reg.uid);
+                  return (
+                    <tr key={reg.id} className="hover:bg-gray-50/30 transition-colors group">
+                      <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
+                      {isAdmin && (
+                        <td className="px-8 py-5 font-bold text-gray-900">{getUserName(zzp)}</td>
+                      )}
+                      <td className="px-8 py-5 text-right font-black text-gray-900">{reg.duration.toFixed(1)}u</td>
                       <td className="px-8 py-5">
-                        <span className="bg-pink-50 text-pink-700 px-3 py-1 rounded-full text-[11px] font-black">
-                          {getUserName(zzp)}
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
+                          reg.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                        }`}>
+                          {reg.status === 'approved' ? 'Goedgekeurd' : 'In afwachting'}
                         </span>
                       </td>
-                    )}
-                    <td className="px-8 py-5 text-right font-black text-gray-900">{reg.duration}u</td>
-                    <td className="px-8 py-5 text-right">
-                      <button onClick={async () => {
-                         if(window.confirm("Verwijderen?")) {
-                           await deleteDoc(doc(db, 'timeRegistrations', reg.id));
-                           setRegistrations(prev => prev.filter(r => r.id !== reg.id));
-                         }
-                      }} className="p-2 text-gray-300 hover:text-red-600 transition-all">
-                        <Trash2 size={18} />
-                      </button>
+                      <td className="px-8 py-5 text-right">
+                        <button onClick={async () => {
+                           if(window.confirm("Deze registratie verwijderen?")) {
+                             await deleteDoc(doc(db, 'timeRegistrations', reg.id));
+                             fetchInitialData();
+                           }
+                        }} className="p-2 text-gray-300 hover:text-red-600 transition-all opacity-0 group-hover:opacity-100">
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {registrations.length === 0 && (
+                  <tr>
+                    <td colSpan={isAdmin ? 5 : 4} className="px-8 py-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
+                      Geen urenregistraties gevonden.
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
