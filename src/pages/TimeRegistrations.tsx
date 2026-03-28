@@ -35,14 +35,14 @@ const TimeRegistrations: React.FC = () => {
   const fetchInitialData = async (currentUser: any) => {
     setLoading(true);
     try {
-      // 1. Haal alle data op
+      // 1. Parallel ophalen van alle data
       const [userDoc, usersSnap, assignSnap] = await Promise.all([
         getDoc(doc(db, 'users', currentUser.uid)),
         getDocs(collection(db, 'users')),
         getDocs(collection(db, 'assignments'))
       ]);
 
-      // Zet profiel data
+      // 2. Gebruikersprofiel bepalen (met fallback op auth data)
       const profileData = userDoc.exists() 
         ? { uid: currentUser.uid, ...userDoc.data() } 
         : { uid: currentUser.uid, displayName: currentUser.displayName, email: currentUser.email, role: 'zzp' };
@@ -55,19 +55,21 @@ const TimeRegistrations: React.FC = () => {
       const allAssignments = assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment));
       setAssignments(allAssignments);
 
-      const isAdminUser = profileData?.role === 'admin';
+      // 3. Cruciaal: Zet de UID en opdracht direct voor ZZP'ers
+      const isAdminUser = profileData.role === 'admin';
       
-      // 2. Logica voor ZZP'er: Selecteer direct de juiste opdracht
       if (!isAdminUser) {
+        // Forceer de UID van de ingelogde gebruiker
         setSelectedZzpUid(currentUser.uid);
-        // Zoek opdrachten voor deze specifieke UID
+        
+        // Filter opdrachten die specifiek voor deze UID zijn
         const myAssignments = allAssignments.filter(a => a.uid === currentUser.uid);
         if (myAssignments.length > 0) {
           setSelectedAssignmentId(myAssignments[0].id);
         }
       }
 
-      // 3. Haal registraties op
+      // 4. Haal registraties op
       const regQuery = isAdminUser 
         ? query(collection(db, 'timeRegistrations'), orderBy('date', 'desc'))
         : query(collection(db, 'timeRegistrations'), where('uid', '==', currentUser.uid), orderBy('date', 'desc'));
@@ -76,22 +78,20 @@ const TimeRegistrations: React.FC = () => {
       setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeRegistration)));
 
     } catch (err) {
-      console.error("Fout in fetchInitialData:", err);
+      console.error("Data fetch error:", err);
     } finally {
       setLoading(false);
     }
   };
 
   const getUserName = (user: any) => {
-    if (!user) return 'Laden...';
+    if (!user) return 'Naam onbekend';
     return user.displayName || user.email || 'Gebruiker';
   };
 
-  const isAdmin = userProfile?.role === 'admin';
-
   const handleSaveWeek = async () => {
     if (!selectedAssignmentId || !selectedZzpUid) {
-      alert("Selecteer een opdracht voordat u opslaat.");
+      alert("Selecteer een opdracht.");
       return;
     }
 
@@ -123,17 +123,20 @@ const TimeRegistrations: React.FC = () => {
         fetchInitialData(auth.currentUser);
         setView('list');
       } catch (err) {
-        console.error("Batch error:", err);
+        console.error("Opslaan mislukt:", err);
       }
     }
   };
+
+  // Helper om te checken of iemand admin is
+  const isAdmin = userProfile?.role === 'admin';
 
   return (
     <div className="p-8 space-y-6 max-w-7xl mx-auto">
       <header className="flex justify-between items-end">
         <div>
           <h1 className="text-4xl font-black text-[#111827] tracking-tight uppercase">Urenregistratie</h1>
-          <p className="text-gray-500 font-medium">Beheer uren en keur ze goed voor facturatie.</p>
+          <p className="text-gray-500 font-medium">Registreer gewerkte uren per opdracht.</p>
         </div>
         
         <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
@@ -147,12 +150,13 @@ const TimeRegistrations: React.FC = () => {
       </header>
 
       {loading ? (
-        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest">Data ophalen...</div>
+        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest">Laden...</div>
       ) : (
         <div className="animate-in fade-in duration-500">
           {view === 'week' ? (
             <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* ZZP SELECTIE / WEERGAVE */}
                 <div className="space-y-3">
                   <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
                   <div className="w-full p-5 bg-gray-50 rounded-2xl font-bold text-gray-900 border border-transparent">
@@ -165,33 +169,37 @@ const TimeRegistrations: React.FC = () => {
                           setSelectedAssignmentId('');
                         }}
                       >
-                        <option value="">Selecteer ZZP'er...</option>
+                        <option value="">Kies ZZP'er...</option>
                         {allUsers.filter(u => u.role === 'zzp').map(u => (
                           <option key={u.uid} value={u.uid}>{getUserName(u)}</option>
                         ))}
                       </select>
                     ) : (
-                      <span className="block">{getUserName(userProfile)}</span>
+                      <span>{getUserName(userProfile)}</span>
                     )}
                   </div>
                 </div>
 
+                {/* OPDRACHT SELECTIE */}
                 <div className="space-y-3">
                   <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Actieve Opdracht</label>
                   <select 
                     className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none transition-all" 
                     value={selectedAssignmentId} 
                     onChange={(e) => setSelectedAssignmentId(e.target.value)}
-                    disabled={!selectedZzpUid}
                   >
-                    <option value="">Kies opdracht...</option>
-                    {assignments.filter(a => a.uid === selectedZzpUid).map(a => (
-                      <option key={a.id} value={a.id}>{a.title}</option>
-                    ))}
+                    <option value="">Selecteer de opdracht...</option>
+                    {assignments
+                      .filter(a => a.uid === selectedZzpUid)
+                      .map(a => (
+                        <option key={a.id} value={a.id}>{a.title}</option>
+                      ))
+                    }
                   </select>
                 </div>
               </div>
 
+              {/* UREN INPUTS */}
               <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
                 {['MA', 'DI', 'WO', 'DO', 'VR', 'ZA', 'ZO'].map((day, idx) => (
                   <div key={day} className="space-y-3 text-center">
@@ -213,10 +221,11 @@ const TimeRegistrations: React.FC = () => {
                 onClick={handleSaveWeek} 
                 className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl disabled:opacity-20 uppercase tracking-widest"
               >
-                <Save size={20} /> Weekoverzicht Opslaan
+                <Save size={20} /> Weekoverzicht indienen
               </button>
             </div>
           ) : (
+            /* LIJST WEERGAVE (onveranderd) */
             <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
               <table className="w-full text-left">
                 <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
@@ -231,7 +240,7 @@ const TimeRegistrations: React.FC = () => {
                 <tbody className="divide-y divide-gray-50">
                   {registrations.length === 0 ? (
                     <tr>
-                      <td colSpan={isAdmin ? 5 : 4} className="px-8 py-10 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Geen data gevonden</td>
+                      <td colSpan={isAdmin ? 5 : 4} className="px-8 py-10 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Geen uren gevonden</td>
                     </tr>
                   ) : (
                     registrations.map(reg => {
