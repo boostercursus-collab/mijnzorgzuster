@@ -7,7 +7,7 @@ import { Plus, Pencil, Trash2, X, Check, AlertCircle, Clock, Send, Calendar as C
 import { format, differenceInMinutes, parse, startOfWeek, addDays, isSameDay, endOfWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
-// Helper voor classNames aangezien 'cn' mogelijk niet globaal is
+// Helper voor classNames
 const classNames = (...classes: any[]) => classes.filter(Boolean).join(' ');
 
 enum OperationType {
@@ -36,8 +36,6 @@ const TimeRegistrations: React.FC = () => {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
   const [timesheetData, setTimesheetData] = useState<{ [key: string]: { totalHours: string, description: string } }>({});
   const [isSavingTimesheet, setIsSavingTimesheet] = useState(false);
-  const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
-  const [isAutoSaving, setIsAutoSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     assignmentId: '',
@@ -67,7 +65,6 @@ const TimeRegistrations: React.FC = () => {
         regsQuery = query(regsRef, where('zzpId', '==', profile.uid), orderBy('date', 'desc'));
       }
 
-      // 1. Haal data op met de nieuwe 'users' collectie voor namen
       const [regsSnap, assignSnap, usersSnap] = await Promise.all([
         getDocs(regsQuery).catch(e => handleFirestoreError(e, OperationType.LIST, 'timeRegistrations')),
         getDocs(profile.role === 'admin' 
@@ -172,7 +169,6 @@ const TimeRegistrations: React.FC = () => {
   const getAssignmentTitle = (id: string) => assignments.find(a => a.id === id)?.title || 'Onbekend';
   const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(currentWeekStart, i));
 
-  // Timesheet data synchronisatie
   useEffect(() => {
     if (viewMode === 'timesheet' && selectedAssignmentId) {
       const data: { [key: string]: { totalHours: string, description: string } } = {};
@@ -311,13 +307,17 @@ const TimeRegistrations: React.FC = () => {
                 onChange={(e) => setSelectedAssignmentId(e.target.value)}
                 className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500 bg-white"
               >
-                {assignments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+                {assignments.length === 0 ? (
+                  <option value="">Geen opdrachten...</option>
+                ) : (
+                  assignments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)
+                )}
               </select>
             </div>
             <button
               onClick={() => handleSaveTimesheet(true)}
-              disabled={isSavingTimesheet}
-              className="flex items-center justify-center space-x-2 rounded-lg bg-pink-600 px-6 py-2 text-sm font-medium text-white hover:bg-pink-700 transition-colors shadow-md"
+              disabled={isSavingTimesheet || assignments.length === 0}
+              className="flex items-center justify-center space-x-2 rounded-lg bg-pink-600 px-6 py-2 text-sm font-medium text-white hover:bg-pink-700 transition-colors shadow-md disabled:bg-gray-400"
             >
               <Send className="h-4 w-4" />
               <span>Week Indienen</span>
@@ -345,7 +345,7 @@ const TimeRegistrations: React.FC = () => {
                         type="number"
                         step="0.5"
                         placeholder="0"
-                        disabled={existing && existing.status !== 'draft' && existing.status !== 'rejected'}
+                        disabled={!selectedAssignmentId || (existing && existing.status !== 'draft' && existing.status !== 'rejected')}
                         value={timesheetData[dateStr]?.totalHours || ''}
                         onChange={(e) => setTimesheetData({
                           ...timesheetData,
@@ -355,7 +355,7 @@ const TimeRegistrations: React.FC = () => {
                       />
                       <textarea
                         placeholder="Wat heb je gedaan?"
-                        disabled={existing && existing.status !== 'draft' && existing.status !== 'rejected'}
+                        disabled={!selectedAssignmentId || (existing && existing.status !== 'draft' && existing.status !== 'rejected')}
                         value={timesheetData[dateStr]?.description || ''}
                         onChange={(e) => setTimesheetData({
                           ...timesheetData,
@@ -457,26 +457,75 @@ const TimeRegistrations: React.FC = () => {
                   required
                   value={formData.assignmentId}
                   onChange={(e) => setFormData({ ...formData, assignmentId: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 bg-white"
+                  className={classNames(
+                    "mt-1 block w-full rounded-lg border px-3 py-2 bg-white focus:ring-pink-500 focus:border-pink-500",
+                    assignments.length === 0 ? "border-red-300" : "border-gray-300"
+                  )}
                 >
-                  <option value="">Selecteer opdracht...</option>
-                  {assignments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+                  {assignments.length === 0 ? (
+                    <option value="" disabled>Geen opdrachten aan u toegewezen...</option>
+                  ) : (
+                    <>
+                      <option value="">Selecteer opdracht...</option>
+                      {assignments.map(a => (
+                        <option key={a.id} value={a.id}>{a.title}</option>
+                      ))}
+                    </>
+                  )}
                 </select>
+                {assignments.length === 0 && (
+                  <p className="mt-2 text-xs text-red-500 bg-red-50 p-2 rounded">
+                    Er zijn geen opdrachten gevonden voor uw account ({profile?.uid}). Neem contact op met de beheerder.
+                  </p>
+                )}
               </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Starttijd</label>
-                  <input type="time" value={formData.startTime} onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2" />
+                  <input 
+                    type="time" 
+                    value={formData.startTime} 
+                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })} 
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2" 
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Eindtijd</label>
-                  <input type="time" value={formData.endTime} onChange={(e) => setFormData({ ...formData, endTime: e.target.value })} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2" />
+                  <input 
+                    type="time" 
+                    value={formData.endTime} 
+                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })} 
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2" 
+                  />
                 </div>
               </div>
-              <button type="submit" className="w-full bg-pink-600 text-white py-2 rounded-lg font-bold hover:bg-pink-700 transition-colors">
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Omschrijving</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+                  rows={3}
+                  placeholder="Wat heb je gedaan?"
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={assignments.length === 0}
+                className="w-full bg-pink-600 text-white py-2 rounded-lg font-bold hover:bg-pink-700 transition-colors disabled:bg-gray-400"
+              >
                 Opslaan
               </button>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="w-full text-gray-500 text-sm">Annuleren</button>
+              <button 
+                type="button" 
+                onClick={() => setIsModalOpen(false)} 
+                className="w-full text-gray-500 text-sm mt-2"
+              >
+                Annuleren
+              </button>
             </form>
           </div>
         </div>
