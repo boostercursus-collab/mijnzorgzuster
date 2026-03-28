@@ -21,29 +21,29 @@ const TimeRegistrations: React.FC = () => {
     '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': ''
   });
 
+  // Luister naar de auth-status om het "Laden..." probleem te voorkomen
   useEffect(() => {
-    fetchInitialData();
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchInitialData(user);
+      } else {
+        setLoading(false);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = async (currentUser: any) => {
     setLoading(true);
     try {
-      // Wacht tot de auth state definitief is
-      const user = auth.currentUser;
-      if (!user) {
-        console.error("Geen actieve sessie gevonden.");
-        setLoading(false);
-        return;
-      }
-
-      // 1. Haal profiel en basisdata op
+      // 1. Haal alle basisdata parallel op
       const [userDoc, usersSnap, assignSnap] = await Promise.all([
-        getDoc(doc(db, 'users', user.uid)),
+        getDoc(doc(db, 'users', currentUser.uid)),
         getDocs(collection(db, 'users')),
         getDocs(collection(db, 'assignments'))
       ]);
 
-      const profileData = userDoc.exists() ? { uid: user.uid, ...userDoc.data() } : null;
+      const profileData = userDoc.exists() ? { uid: currentUser.uid, ...userDoc.data() } : null;
       setUserProfile(profileData);
       
       const usersList = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
@@ -54,34 +54,32 @@ const TimeRegistrations: React.FC = () => {
 
       const isAdmin = profileData?.role === 'admin';
       
-      // 2. Logica voor ZZP'er selectie en opdracht filtering
+      // 2. Initialiseer ZZP-specifieke filters
       if (!isAdmin) {
-        setSelectedZzpUid(user.uid);
-        // Filter direct de opdrachten die bij deze specifieke ZZP'er horen
-        const myAssignments = allAssignments.filter(a => a.uid === user.uid);
+        setSelectedZzpUid(currentUser.uid);
+        const myAssignments = allAssignments.filter(a => a.uid === currentUser.uid);
         if (myAssignments.length > 0) {
           setSelectedAssignmentId(myAssignments[0].id);
         }
       }
 
-      // 3. Haal registraties op
+      // 3. Haal de urenregistraties op
       const regQuery = isAdmin 
         ? query(collection(db, 'timeRegistrations'), orderBy('date', 'desc'))
-        : query(collection(db, 'timeRegistrations'), where('uid', '==', user.uid), orderBy('date', 'desc'));
+        : query(collection(db, 'timeRegistrations'), where('uid', '==', currentUser.uid), orderBy('date', 'desc'));
 
       const regSnap = await getDocs(regQuery);
       setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeRegistration)));
 
     } catch (err) {
-      console.error("Fout in fetchInitialData:", err);
+      console.error("Fout bij laden data:", err);
     } finally {
-      // Dit zorgt ervoor dat de "Laden..." status ALTIJD stopt, ook bij errors
-      setLoading(false);
+      setLoading(false); // Zorgt dat de spinner altijd verdwijnt
     }
   };
 
   const getUserName = (user: any) => {
-    if (!user) return 'Laden...';
+    if (!user) return 'Onbekend';
     return user.displayName || user.email || 'Gebruiker';
   };
 
@@ -89,7 +87,7 @@ const TimeRegistrations: React.FC = () => {
 
   const handleSaveWeek = async () => {
     if (!selectedAssignmentId || !selectedZzpUid) {
-      alert("Geen actieve opdracht geselecteerd.");
+      alert("Selecteer eerst een ZZP'er en een opdracht.");
       return;
     }
 
@@ -118,14 +116,11 @@ const TimeRegistrations: React.FC = () => {
         await batch.commit();
         alert("Uren succesvol ingediend!");
         setWeekHours({'0':'','1':'','2':'','3':'','4':'','5':'','6':''});
-        fetchInitialData();
+        fetchInitialData(auth.currentUser);
         setView('list');
       } catch (err) {
-        console.error("Batch commit mislukt:", err);
-        alert("Er ging iets mis bij het opslaan.");
+        console.error("Fout bij opslaan uren:", err);
       }
-    } else {
-      alert("Vul minimaal één dag in met uren.");
     }
   };
 
@@ -134,7 +129,7 @@ const TimeRegistrations: React.FC = () => {
       <header className="flex justify-between items-end">
         <div>
           <h1 className="text-4xl font-black text-[#111827] tracking-tight uppercase">Urenregistratie</h1>
-          <p className="text-gray-500 font-medium">Beheer en registreer gewerkte uren.</p>
+          <p className="text-gray-500 font-medium">Registreer en beheer gewerkte uren.</p>
         </div>
         
         <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
@@ -148,7 +143,7 @@ const TimeRegistrations: React.FC = () => {
       </header>
 
       {loading ? (
-        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest">Data ophalen...</div>
+        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest">Systeem wordt geladen...</div>
       ) : view === 'week' ? (
         <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10 animate-in fade-in duration-500">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -161,7 +156,7 @@ const TimeRegistrations: React.FC = () => {
                     value={selectedZzpUid}
                     onChange={(e) => {
                       setSelectedZzpUid(e.target.value);
-                      setSelectedAssignmentId(''); // Reset assignment bij wisselen user
+                      setSelectedAssignmentId('');
                     }}
                   >
                     <option value="">Kies ZZP'er...</option>
@@ -176,12 +171,12 @@ const TimeRegistrations: React.FC = () => {
             <div className="space-y-3">
               <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Actieve Opdracht</label>
               <select 
-                className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none transition-all disabled:opacity-50" 
+                className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none transition-all" 
                 value={selectedAssignmentId} 
-                disabled={!selectedZzpUid}
                 onChange={(e) => setSelectedAssignmentId(e.target.value)}
+                disabled={!selectedZzpUid}
               >
-                <option value="">Selecteer de opdracht...</option>
+                <option value="">Selecteer opdracht...</option>
                 {assignments.filter(a => a.uid === selectedZzpUid).map(a => (
                   <option key={a.id} value={a.id}>{a.title}</option>
                 ))}
@@ -199,7 +194,7 @@ const TimeRegistrations: React.FC = () => {
                   placeholder="0"
                   value={weekHours[idx]}
                   onChange={(e) => setWeekHours({...weekHours, [idx]: e.target.value})}
-                  className="w-full p-5 bg-gray-50 rounded-2xl text-center font-black text-xl border-none focus:ring-2 focus:ring-pink-500 outline-none transition-all"
+                  className="w-full p-5 bg-gray-50 rounded-2xl text-center font-black text-xl border-none focus:ring-2 focus:ring-pink-500 outline-none"
                 />
               </div>
             ))}
@@ -228,7 +223,7 @@ const TimeRegistrations: React.FC = () => {
             <tbody className="divide-y divide-gray-50">
               {registrations.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 5 : 4} className="px-8 py-10 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Geen registraties gevonden</td>
+                  <td colSpan={isAdmin ? 5 : 4} className="px-8 py-10 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Geen data gevonden</td>
                 </tr>
               ) : (
                 registrations.map(reg => {
@@ -236,7 +231,7 @@ const TimeRegistrations: React.FC = () => {
                   return (
                     <tr key={reg.id} className="hover:bg-gray-50/30 transition-colors group">
                       <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
-                      {isAdmin && <td className="px-8 py-5 font-bold text-gray-900">{getUserName(zzp)}</td>}
+                      {isAdmin && <td className="px-8 py-5 font-bold">{getUserName(zzp)}</td>}
                       <td className="px-8 py-5 text-right font-black text-gray-900">{reg.duration}u</td>
                       <td className="px-8 py-5">
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
@@ -247,27 +242,19 @@ const TimeRegistrations: React.FC = () => {
                       </td>
                       <td className="px-8 py-5 text-right flex justify-end gap-2">
                         {isAdmin && reg.status === 'pending' && (
-                          <button 
-                            onClick={async () => {
-                              await updateDoc(doc(db, 'timeRegistrations', reg.id), { status: 'approved' });
-                              fetchInitialData();
-                            }} 
-                            className="p-2 text-gray-300 hover:text-green-600 transition-all"
-                            title="Goedkeuren"
-                          >
+                          <button onClick={async () => {
+                            await updateDoc(doc(doc(db, 'timeRegistrations', reg.id)), { status: 'approved' });
+                            fetchInitialData(auth.currentUser);
+                          }} className="p-2 text-gray-300 hover:text-green-600 transition-all">
                             <CheckCircle2 size={18} />
                           </button>
                         )}
-                        <button 
-                          onClick={async () => {
-                            if(window.confirm("Verwijderen?")) {
-                              await deleteDoc(doc(db, 'timeRegistrations', reg.id));
-                              fetchInitialData();
-                            }
-                          }} 
-                          className="p-2 text-gray-300 hover:text-red-600 transition-all opacity-0 group-hover:opacity-100"
-                          title="Verwijderen"
-                        >
+                        <button onClick={async () => {
+                           if(window.confirm("Verwijderen?")) {
+                             await deleteDoc(doc(db, 'timeRegistrations', reg.id));
+                             fetchInitialData(auth.currentUser);
+                           }
+                        }} className="p-2 text-gray-300 hover:text-red-600 transition-all opacity-0 group-hover:opacity-100">
                           <Trash2 size={18} />
                         </button>
                       </td>
