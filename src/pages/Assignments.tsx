@@ -9,10 +9,11 @@ import { nl } from 'date-fns/locale';
 const Assignments: React.FC = () => {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [zzps, setZzps] = useState<any[]>([]); // Gebruik any of UserProfile afhankelijk van je types
+  const [zzps, setZzps] = useState<any[]>([]); 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
   const [loading, setLoading] = useState(true);
+  
   const [formData, setFormData] = useState({
     clientId: '',
     zzpId: '',
@@ -20,7 +21,8 @@ const Assignments: React.FC = () => {
     description: '',
     startDate: '',
     endDate: '',
-    hourlyRate: 0
+    hourlyRate: 0,
+    status: 'active' // Standaard status toevoegen
   });
 
   useEffect(() => {
@@ -30,7 +32,6 @@ const Assignments: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // We halen Assignments, Clients en de nieuwe Users collectie (gefilterd op rol zzp) op
       const [assignSnap, clientSnap, zzpSnap] = await Promise.all([
         getDocs(collection(db, 'assignments')),
         getDocs(collection(db, 'clients')),
@@ -39,12 +40,7 @@ const Assignments: React.FC = () => {
 
       setAssignments(assignSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
       setClients(clientSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
-      
-      // We mappen de users naar een formaat dat we kunnen gebruiken in de dropdown
-      setZzps(zzpSnap.docs.map(doc => ({ 
-        uid: doc.id, 
-        ...doc.data() 
-      })));
+      setZzps(zzpSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -55,6 +51,7 @@ const Assignments: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Belangrijk: we zorgen dat zzpId exact de UID is uit de dropdown
       if (editingAssignment) {
         await updateDoc(doc(db, 'assignments', editingAssignment.id), formData);
       } else {
@@ -62,11 +59,24 @@ const Assignments: React.FC = () => {
       }
       setIsModalOpen(false);
       setEditingAssignment(null);
-      setFormData({ clientId: '', zzpId: '', title: '', description: '', startDate: '', endDate: '', hourlyRate: 0 });
+      resetForm();
       fetchData();
     } catch (error) {
       console.error('Error saving assignment:', error);
     }
+  };
+
+  const resetForm = () => {
+    setFormData({ 
+      clientId: '', 
+      zzpId: '', 
+      title: '', 
+      description: '', 
+      startDate: '', 
+      endDate: '', 
+      hourlyRate: 0,
+      status: 'active'
+    });
   };
 
   const handleEdit = (assignment: Assignment) => {
@@ -78,7 +88,8 @@ const Assignments: React.FC = () => {
       description: assignment.description || '',
       startDate: assignment.startDate,
       endDate: assignment.endDate || '',
-      hourlyRate: assignment.hourlyRate || 0
+      hourlyRate: assignment.hourlyRate || 0,
+      status: assignment.status || 'active'
     });
     setIsModalOpen(true);
   };
@@ -96,22 +107,20 @@ const Assignments: React.FC = () => {
 
   const getClientName = (id: string) => clients.find(c => c.id === id)?.name || 'Onbekend';
   
-  // Aangepaste helper om de naam van de ZZP'er te vinden in de nieuwe lijst
   const getZzpName = (id: string) => {
     const zzp = zzps.find(z => z.uid === id);
-    if (!zzp) return 'Onbekend';
-    // Gebruik displayName (zoals opgeslagen door AdminPanel) of combineer voornaam/achternaam
+    if (!zzp) return 'Niet toegewezen';
     return zzp.displayName || `${zzp.firstName || ''} ${zzp.lastName || ''}`.trim() || zzp.email;
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Opdrachten</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Opdrachten Beheer</h1>
         <button
           onClick={() => {
             setEditingAssignment(null);
-            setFormData({ clientId: '', zzpId: '', title: '', description: '', startDate: '', endDate: '', hourlyRate: 0 });
+            resetForm();
             setIsModalOpen(true);
           }}
           className="flex items-center space-x-2 rounded-lg bg-pink-600 px-4 py-2 text-sm font-medium text-white hover:bg-pink-700 transition-colors"
@@ -122,7 +131,10 @@ const Assignments: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="text-pink-600 font-medium">Data ophalen...</div>
+        <div className="flex items-center space-x-2 text-pink-600 font-medium">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-pink-600 border-t-transparent"></div>
+          <span>Data ophalen...</span>
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-white shadow-sm">
           <table className="w-full text-left text-sm">
@@ -141,18 +153,29 @@ const Assignments: React.FC = () => {
                 <tr key={assignment.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{assignment.title}</td>
                   <td className="px-6 py-4 text-gray-600">{getClientName(assignment.clientId)}</td>
-                  <td className="px-6 py-4 text-gray-600">{getZzpName(assignment.zzpId)}</td>
-                  <td className="px-6 py-4 text-gray-600">
-                    {assignment.startDate ? format(new Date(assignment.startDate), 'd MMM yyyy', { locale: nl }) : '??'}
-                    {assignment.endDate && ` - ${format(new Date(assignment.endDate), 'd MMM yyyy', { locale: nl })}`}
+                  <td className="px-6 py-4">
+                    <div className="flex items-center space-x-2">
+                      <div className="h-7 w-7 rounded-full bg-pink-100 flex items-center justify-center text-pink-700 text-[10px] font-bold">
+                        {getZzpName(assignment.zzpId).substring(0, 2).toUpperCase()}
+                      </div>
+                      <span className="text-gray-600">{getZzpName(assignment.zzpId)}</span>
+                    </div>
                   </td>
-                  <td className="px-6 py-4 text-gray-600">€{assignment.hourlyRate}/u</td>
+                  <td className="px-6 py-4 text-gray-600">
+                    <span className="flex items-center space-x-1 text-xs">
+                      <Calendar className="h-3 w-3" />
+                      <span>
+                        {assignment.startDate ? format(new Date(assignment.startDate), 'd MMM yyyy', { locale: nl }) : '??'}
+                      </span>
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-gray-600 font-medium">€{assignment.hourlyRate}/u</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end space-x-2">
-                      <button onClick={() => handleEdit(assignment)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+                      <button onClick={() => handleEdit(assignment)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button onClick={() => handleDelete(assignment.id)} className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                      <button onClick={() => handleDelete(assignment.id)} className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
@@ -162,7 +185,10 @@ const Assignments: React.FC = () => {
             </tbody>
           </table>
           {assignments.length === 0 && (
-            <div className="p-8 text-center text-gray-400">Geen opdrachten gevonden.</div>
+            <div className="p-12 text-center">
+              <Briefcase className="h-12 w-12 text-gray-200 mx-auto mb-4" />
+              <p className="text-gray-400 text-lg">Geen opdrachten gevonden.</p>
+            </div>
           )}
         </div>
       )}
@@ -187,7 +213,7 @@ const Assignments: React.FC = () => {
                   required
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
                   placeholder="Bijv. Verpleegkundige Nachtdienst"
                 />
               </div>
@@ -197,19 +223,19 @@ const Assignments: React.FC = () => {
                   required
                   value={formData.clientId}
                   onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500 bg-white"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 bg-white focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
                 >
-                  <option value="">Selecteer...</option>
+                  <option value="">Selecteer klant...</option>
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">ZZP'er</label>
+                <label className="block text-sm font-medium text-gray-700">ZZP'er Toewijzen</label>
                 <select
                   required
                   value={formData.zzpId}
                   onChange={(e) => setFormData({ ...formData, zzpId: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500 bg-white"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 bg-white focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
                 >
                   <option value="">Selecteer ZZP'er...</option>
                   {zzps.map(z => (
@@ -226,16 +252,16 @@ const Assignments: React.FC = () => {
                   required
                   value={formData.startDate}
                   onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Einddatum (optioneel)</label>
+                <label className="block text-sm font-medium text-gray-700">Einddatum</label>
                 <input
                   type="date"
                   value={formData.endDate}
                   onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
                 />
               </div>
               <div>
@@ -243,17 +269,30 @@ const Assignments: React.FC = () => {
                 <input
                   type="number"
                   step="0.01"
+                  required
                   value={formData.hourlyRate}
                   onChange={(e) => setFormData({ ...formData, hourlyRate: parseFloat(e.target.value) })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 bg-white"
+                >
+                  <option value="active">Actief</option>
+                  <option value="completed">Afgerond</option>
+                  <option value="cancelled">Geannuleerd</option>
+                </select>
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700">Omschrijving</label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
                   rows={3}
                 />
               </div>
@@ -261,13 +300,13 @@ const Assignments: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Annuleren
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 rounded-lg bg-pink-600 px-4 py-2 text-sm font-medium text-white hover:bg-pink-700 transition-colors shadow-lg shadow-pink-100"
+                  className="flex-1 rounded-lg bg-pink-600 px-4 py-2 text-sm font-medium text-white hover:bg-pink-700 shadow-lg shadow-pink-100"
                 >
                   {editingAssignment ? 'Wijzigingen Opslaan' : 'Opdracht Opslaan'}
                 </button>
