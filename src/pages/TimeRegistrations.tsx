@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { TimeRegistration, Assignment } from '../types';
-import { Calendar, List, Save, Trash2, CheckCircle2 } from 'lucide-react';
+import { Calendar, List, Save } from 'lucide-react';
 import { format, startOfWeek, addDays, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -11,10 +11,13 @@ const TimeRegistrations: React.FC = () => {
   const [currentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [registrations, setRegistrations] = useState<TimeRegistration[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]); // Voor de admin dropdown
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  // De states voor de geselecteerde data
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Selectie states
+  const [selectedZzpUid, setSelectedZzpUid] = useState('');
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
   const [weekHours, setWeekHours] = useState<{ [key: string]: string }>({
     '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': ''
@@ -23,55 +26,68 @@ const TimeRegistrations: React.FC = () => {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
-        fetchData(user);
+        fetchInitialData(user);
       }
     });
     return () => unsubscribe();
   }, []);
 
-  const fetchData = async (currentUser: any) => {
+  // Effect om opdrachten te filteren zodra de geselecteerde ZZP'er wijzigt (voor Admin)
+  useEffect(() => {
+    if (selectedZzpUid) {
+      updateAssignmentsFilter(selectedZzpUid);
+    }
+  }, [selectedZzpUid]);
+
+  const fetchInitialData = async (currentUser: any) => {
     setLoading(true);
     try {
-      // 1. Haal gebruikersrol op
       const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-      const userData = userDoc.exists() ? userDoc.data() : null;
-      const isAdmin = userData?.role === 'admin';
+      const userData = userDoc.data();
+      const adminStatus = userData?.role === 'admin';
+      
+      setIsAdmin(adminStatus);
       setUserProfile({ uid: currentUser.uid, ...userData });
 
-      // 2. Haal opdrachten op uit Firestore
-      const assignSnap = await getDocs(collection(db, 'assignments'));
-      const allAssigns = assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment));
-
-      // 3. FILTER: Als je geen admin bent, zie je alleen opdrachten waar jouw UID bij staat
-      const myAssignments = isAdmin 
-        ? allAssigns 
-        : allAssigns.filter(a => String(a.uid).trim() === String(currentUser.uid).trim());
-
-      setAssignments(myAssignments);
-
-      // 4. Automatisch de eerste opdracht selecteren voor de ZZP'er
-      if (myAssignments.length > 0) {
-        setSelectedAssignmentId(myAssignments[0].id);
+      if (adminStatus) {
+        // Admin: Haal alle ZZP'ers op
+        const usersSnap = await getDocs(collection(db, 'users'));
+        setAllUsers(usersSnap.docs.map(d => ({ uid: d.id, ...d.data() })));
+      } else {
+        // ZZP'er: Zet eigen UID vast en haal opdrachten op
+        setSelectedZzpUid(currentUser.uid);
       }
 
-      // 5. Haal urenhistorie op
-      const regQuery = isAdmin
-        ? query(collection(db, 'timeRegistrations'), orderBy('date', 'desc'))
-        : query(collection(db, 'timeRegistrations'), where('uid', '==', currentUser.uid), orderBy('date', 'desc'));
-
-      const regSnap = await getDocs(regQuery);
-      setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeRegistration)));
-
+      await fetchRegistrations(currentUser.uid, adminStatus);
     } catch (err) {
-      console.error("Fout bij ophalen data:", err);
+      console.error("Data ophalen mislukt:", err);
     } finally {
       setLoading(false);
     }
   };
 
+  const updateAssignmentsFilter = async (targetUid: string) => {
+    const assignSnap = await getDocs(collection(db, 'assignments'));
+    const filtered = assignSnap.docs
+      .map(d => ({ id: d.id, ...d.data() } as Assignment))
+      .filter(a => String(a.uid) === String(targetUid));
+    
+    setAssignments(filtered);
+    setSelectedAssignmentId(filtered.length > 0 ? filtered[0].id : '');
+  };
+
+  const fetchRegistrations = async (uid: string, adminStatus: boolean) => {
+    const regQuery = adminStatus 
+      ? query(collection(db, 'timeRegistrations'), orderBy('date', 'desc'))
+      : query(collection(db, 'timeRegistrations'), where('uid', '==', uid), orderBy('date', 'desc'));
+    
+    const regSnap = await getDocs(regQuery);
+    setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeRegistration)));
+  };
+
   const handleSaveWeek = async () => {
-    if (!selectedAssignmentId) {
-      alert("Selecteer eerst een opdracht.");
+    if (!selectedAssignmentId || !selectedZzpUid) {
+      alert("Selecteer een ZZP'er en opdracht.");
       return;
     }
 
@@ -85,7 +101,7 @@ const TimeRegistrations: React.FC = () => {
         const date = format(addDays(currentWeekStart, parseInt(index)), 'yyyy-MM-dd');
         const newRegRef = doc(collection(db, 'timeRegistrations'));
         batch.set(newRegRef, {
-          uid: userProfile.uid,
+          uid: selectedZzpUid,
           assignmentId: selectedAssignmentId,
           date,
           duration: numHours,
@@ -97,9 +113,9 @@ const TimeRegistrations: React.FC = () => {
 
     if (hasData) {
       await batch.commit();
-      alert("Uren ingediend!");
+      alert("Uren succesvol opgeslagen!");
       setWeekHours({'0':'','1':'','2':'','3':'','4':'','5':'','6':''});
-      fetchData(auth.currentUser);
+      fetchRegistrations(userProfile.uid, isAdmin);
       setView('list');
     }
   };
@@ -118,26 +134,54 @@ const TimeRegistrations: React.FC = () => {
       </header>
 
       {loading ? (
-        <div className="p-20 text-center font-black text-pink-600 animate-pulse">LADEN...</div>
+        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest">Laden...</div>
       ) : (
-        <>
+        <div className="animate-in fade-in duration-500">
           {view === 'week' ? (
             <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Selecteer Opdracht</label>
-                <select 
-                  className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none" 
-                  value={selectedAssignmentId} 
-                  onChange={(e) => setSelectedAssignmentId(e.target.value)}
-                >
-                  {assignments.length === 0 ? (
-                    <option>Geen opdrachten gevonden voor jouw account</option>
-                  ) : (
-                    assignments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)
-                  )}
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                
+                {/* ZZP VELD: Alleen voor Admin */}
+                {isAdmin ? (
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
+                    <select 
+                      className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none"
+                      value={selectedZzpUid}
+                      onChange={(e) => setSelectedZzpUid(e.target.value)}
+                    >
+                      <option value="">Selecteer ZZP'er...</option>
+                      {allUsers.map(u => (
+                        <option key={u.uid} value={u.uid}>{u.displayName || u.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
+                    <div className="w-full p-5 bg-gray-100 rounded-2xl font-bold text-gray-500">
+                      {userProfile?.displayName}
+                    </div>
+                  </div>
+                )}
+
+                {/* OPDRACHT VELD */}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Actieve Opdracht</label>
+                  <select 
+                    className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none" 
+                    value={selectedAssignmentId} 
+                    onChange={(e) => setSelectedAssignmentId(e.target.value)}
+                  >
+                    <option value="">{assignments.length > 0 ? 'Kies opdracht...' : 'Geen opdrachten gevonden'}</option>
+                    {assignments.map(a => (
+                      <option key={a.id} value={a.id}>{a.title}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
+              {/* Uren Grid */}
               <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
                 {['MA', 'DI', 'WO', 'DO', 'VR', 'ZA', 'ZO'].map((day, idx) => (
                   <div key={day} className="space-y-3 text-center">
@@ -154,14 +198,13 @@ const TimeRegistrations: React.FC = () => {
 
               <button 
                 onClick={handleSaveWeek}
-                disabled={!selectedAssignmentId}
-                className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl disabled:opacity-20 uppercase tracking-widest"
+                className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl uppercase tracking-widest"
               >
-                <Save size={20} /> Uren indienen
+                <Save size={20} /> Weekoverzicht indienen
               </button>
             </div>
           ) : (
-            /* Lijst weergave code ... */
+            /* Lijst weergave blijft gelijk aan jouw origineel */
             <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
                <table className="w-full text-left">
                 <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
@@ -187,7 +230,7 @@ const TimeRegistrations: React.FC = () => {
               </table>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
