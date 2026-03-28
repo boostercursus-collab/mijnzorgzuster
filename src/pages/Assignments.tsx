@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Assignment, Client, UserProfile } from '../types';
-import { Plus, Pencil, Trash2, X, Briefcase, Calendar } from 'lucide-center';
+import { Plus, Pencil, Trash2, X, Briefcase, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -32,24 +32,13 @@ const Assignments: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Haal opdrachten en klanten op
       const assignSnap = await getDocs(collection(db, 'assignments'));
       const clientSnap = await getDocs(collection(db, 'clients'));
-      
-      // Haal ALLE gebruikers op die de rol 'zzp' hebben
-      // Als dit leeg blijft, controleer dan of de 'role' in Firestore exact 'zzp' is (kleine letters)
-      const zzpQuery = query(collection(db, 'users'), where('role', '==', 'zzp'));
-      const zzpSnap = await getDocs(zzpQuery);
-
-      console.log("Aantal ZZP'ers gevonden:", zzpSnap.docs.length);
+      const zzpSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'zzp')));
 
       setAssignments(assignSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Assignment)));
       setClients(clientSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
-      setZzps(zzpSnap.docs.map(doc => ({ 
-        uid: doc.id, 
-        ...doc.data() 
-      } as UserProfile)));
-
+      setZzps(zzpSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -76,14 +65,7 @@ const Assignments: React.FC = () => {
 
   const resetForm = () => {
     setFormData({ 
-      clientId: '', 
-      uid: '', 
-      title: '', 
-      description: '', 
-      startDate: '', 
-      endDate: '', 
-      hourlyRate: 0,
-      status: 'active'
+      clientId: '', uid: '', title: '', description: '', startDate: '', endDate: '', hourlyRate: 0, status: 'active'
     });
   };
 
@@ -114,12 +96,10 @@ const Assignments: React.FC = () => {
   };
 
   const getClientName = (id: string) => clients.find(c => c.id === id)?.name || 'Onbekend';
-  
   const getZzpName = (uid: string) => {
     const zzp = zzps.find(z => z.uid === uid);
-    if (!zzp) return 'Niet toegewezen';
-    const name = zzp.displayName || `${zzp.firstName || ''} ${zzp.lastName || ''}`.trim();
-    return name || zzp.email || 'Naamloze ZZP';
+    if (!zzp) return 'Laden...';
+    return zzp.displayName || `${zzp.firstName || ''} ${zzp.lastName || ''}`.trim() || zzp.email;
   };
 
   return (
@@ -127,15 +107,11 @@ const Assignments: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-black text-gray-900">Opdrachten Beheer</h1>
-          <p className="text-gray-500 font-medium">Koppel ZZP'ers aan projecten en stel tarieven in.</p>
+          <p className="text-gray-500 font-medium">Koppel ZZP'ers aan projecten.</p>
         </div>
         <button
-          onClick={() => {
-            setEditingAssignment(null);
-            resetForm();
-            setIsModalOpen(true);
-          }}
-          className="flex items-center space-x-2 rounded-2xl bg-pink-600 px-6 py-3 text-white font-bold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
+          onClick={() => { setEditingAssignment(null); resetForm(); setIsModalOpen(true); }}
+          className="flex items-center space-x-2 rounded-2xl bg-pink-600 px-6 py-3 text-white font-bold hover:bg-pink-700 transition-all shadow-lg"
         >
           <Plus className="h-5 w-5" />
           <span>Nieuwe Opdracht</span>
@@ -143,7 +119,7 @@ const Assignments: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="p-12 text-center text-pink-600 font-bold">Data ophalen...</div>
+        <div className="p-12 text-center text-pink-600 font-bold">Laden...</div>
       ) : (
         <div className="overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-sm">
           <table className="w-full text-left">
@@ -160,15 +136,13 @@ const Assignments: React.FC = () => {
                 <tr key={assignment.id} className="hover:bg-pink-50/5 transition-colors">
                   <td className="px-8 py-5 font-bold text-gray-900">{assignment.title}</td>
                   <td className="px-8 py-5 text-gray-600 font-medium">{getClientName(assignment.clientId)}</td>
-                  <td className="px-8 py-5">
-                    <span className="text-gray-900 font-bold">{getZzpName(assignment.uid)}</span>
-                  </td>
+                  <td className="px-8 py-5 font-bold text-gray-900">{getZzpName(assignment.uid)}</td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex justify-end space-x-2">
-                      <button onClick={() => handleEdit(assignment)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
+                      <button onClick={() => handleEdit(assignment)} className="p-2 text-gray-400 hover:text-blue-600">
                         <Pencil className="h-5 w-5" />
                       </button>
-                      <button onClick={() => handleDelete(assignment.id)} className="p-2 text-gray-400 hover:text-red-600 transition-colors">
+                      <button onClick={() => handleDelete(assignment.id)} className="p-2 text-gray-400 hover:text-red-600">
                         <Trash2 className="h-5 w-5" />
                       </button>
                     </div>
@@ -182,53 +156,42 @@ const Assignments: React.FC = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-[2.5rem] bg-white p-10 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-black text-gray-900 mb-8">
-              {editingAssignment ? 'Opdracht Bewerken' : 'Nieuwe Opdracht'}
-            </h2>
-            
-            <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="w-full max-w-lg rounded-[2.5rem] bg-white p-10 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-2xl font-black text-gray-900 mb-6">{editingAssignment ? 'Bewerken' : 'Nieuw'}</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-xs font-black uppercase text-gray-400 mb-2 block tracking-widest">Titel</label>
-                <input
-                  type="text" required value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full rounded-2xl border-gray-100 bg-gray-50 p-4 font-bold"
-                />
+                <label className="text-xs font-black uppercase text-gray-400 mb-1 block">Titel</label>
+                <input type="text" required value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="w-full rounded-xl border-gray-100 bg-gray-50 p-4 font-bold" />
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-black uppercase text-gray-400 mb-2 block tracking-widest">Klant</label>
-                  <select
-                    required value={formData.clientId}
-                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                    className="w-full rounded-2xl border-gray-100 bg-gray-50 p-4 font-bold"
-                  >
-                    <option value="">Kies klant...</option>
+                  <label className="text-xs font-black uppercase text-gray-400 mb-1 block">Klant</label>
+                  <select required value={formData.clientId} onChange={(e) => setFormData({ ...formData, clientId: e.target.value })} className="w-full rounded-xl border-gray-100 bg-gray-50 p-4 font-bold">
+                    <option value="">Kies...</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-black uppercase text-gray-400 mb-2 block tracking-widest">ZZP'er</label>
-                  <select
-                    required value={formData.uid}
-                    onChange={(e) => setFormData({ ...formData, uid: e.target.value })}
-                    className="w-full rounded-2xl border-gray-100 bg-gray-50 p-4 font-bold"
-                  >
-                    <option value="">Selecteer ZZP'er...</option>
-                    {zzps.map(z => (
-                      <option key={z.uid} value={z.uid}>
-                        {z.displayName || `${z.firstName || ''} ${z.lastName || ''}`.trim() || z.email}
-                      </option>
-                    ))}
+                  <label className="text-xs font-black uppercase text-gray-400 mb-1 block">ZZP'er</label>
+                  <select required value={formData.uid} onChange={(e) => setFormData({ ...formData, uid: e.target.value })} className="w-full rounded-xl border-gray-100 bg-gray-50 p-4 font-bold">
+                    <option value="">Kies...</option>
+                    {zzps.map(z => <option key={z.uid} value={z.uid}>{z.firstName} {z.lastName}</option>)}
                   </select>
                 </div>
               </div>
-
-              <div className="flex space-x-4 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 rounded-2xl bg-gray-100 py-4 font-bold">Annuleren</button>
-                <button type="submit" className="flex-1 rounded-2xl bg-pink-600 py-4 font-bold text-white shadow-lg">Opslaan</button>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-black uppercase text-gray-400 mb-1 block">Startdatum</label>
+                  <input type="date" required value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} className="w-full rounded-xl border-gray-100 bg-gray-50 p-4 font-bold" />
+                </div>
+                <div>
+                  <label className="text-xs font-black uppercase text-gray-400 mb-1 block">Tarief</label>
+                  <input type="number" step="0.01" required value={formData.hourlyRate} onChange={(e) => setFormData({ ...formData, hourlyRate: parseFloat(e.target.value) })} className="w-full rounded-xl border-gray-100 bg-gray-50 p-4 font-bold" />
+                </div>
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 rounded-xl bg-gray-100 py-4 font-bold">Sluiten</button>
+                <button type="submit" className="flex-1 rounded-xl bg-pink-600 py-4 font-bold text-white shadow-lg">Opslaan</button>
               </div>
             </form>
           </div>
