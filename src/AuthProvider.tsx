@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserProfile } from './types';
@@ -28,26 +28,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
       if (firebaseUser) {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = await getDoc(userRef);
+
         if (userDoc.exists()) {
+          // Gebruiker is bekend in Firestore, laat ze binnen
+          setUser(firebaseUser);
           setProfile(userDoc.data() as UserProfile);
-        } else {
-          // Create a default profile if it doesn't exist
-          const newProfile: UserProfile = {
+        } else if (firebaseUser.email === 'boostercursus@gmail.com') {
+          // Uitzondering: Hoofd-admin mag altijd een profiel aanmaken als het ontbreekt
+          const adminProfile: UserProfile = {
             uid: firebaseUser.uid,
-            firstName: firebaseUser.displayName?.split(' ')[0] || '',
-            lastName: firebaseUser.displayName?.split(' ').slice(1).join(' ') || '',
-            email: firebaseUser.email || '',
-            role: firebaseUser.email === 'boostercursus@gmail.com' ? 'admin' : 'zzp',
+            firstName: 'Hoofd',
+            lastName: 'Admin',
+            email: firebaseUser.email,
+            role: 'admin',
           };
-          await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
-          setProfile(newProfile);
+          await setDoc(userRef, adminProfile);
+          setUser(firebaseUser);
+          setProfile(adminProfile);
+        } else {
+          // GEBRUIKER BESTAAT NIET IN DATABASE -> Toegang weigeren
+          console.warn("Toegang geweigerd: Gebruiker niet gevonden in Firestore.");
+          await signOut(auth);
+          setUser(null);
+          setProfile(null);
         }
       } else {
+        setUser(null);
         setProfile(null);
       }
+      
       setLoading(false);
       setIsAuthReady(true);
     });
