@@ -1,21 +1,27 @@
 {
-  "name": "MijnZorgzuster",
-  "short_name": "MZZ",
-  "description": "Urenregistratie voor MijnZorgzuster",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "short_name": "MijnZorgzuster",
+  "name": "MijnZorgzuster Urenregistratie",
   "icons": [
     {
       "src": "https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg",
-      "sizes": "192x192",
+      "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/jpeg"
     },
     {
       "src": "https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg",
       "sizes": "512x512",
-      "type": "image/jpeg"
+      "type": "image/jpeg",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#db2777",
+  "background_color": "#ffffff"
 }
