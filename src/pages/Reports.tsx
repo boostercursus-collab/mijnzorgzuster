@@ -14,7 +14,7 @@ const Reports: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [registrations, setRegistrations] = useState<TimeRegistration[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [zzps, setZzps] = useState<UserProfile[]>([]);
+  const [zzps, setZzps] = useState<any[]>([]); // 'any' voor flexibele naam-velden
   const [assignments, setAssignments] = useState<Assignment[]>([]);
 
   // Filters
@@ -25,6 +25,12 @@ const Reports: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [profile]);
+
+  // Helper voor naamweergave conform jouw database (displayName)
+  const getUserDisplayName = (user: any) => {
+    if (!user) return 'Onbekend';
+    return user.displayName || user.email || 'Gebruiker';
+  };
 
   const fetchData = async () => {
     if (!profile) return;
@@ -37,13 +43,13 @@ const Reports: React.FC = () => {
 
       const [clientsSnap, zzpsSnap, assignmentsSnap, regsSnap] = await Promise.all([
         getDocs(collection(db, 'clients')),
-        isAdmin ? getDocs(query(collection(db, 'users'), where('role', '==', 'zzp'))) : Promise.resolve({ docs: [] }),
+        getDocs(collection(db, 'users')), // Haal alle users op voor naam-matching
         getDocs(collection(db, 'assignments')),
         getDocs(regsQuery)
       ]);
 
       setClients(clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
-      setZzps(zzpsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
+      setZzps(zzpsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
       setAssignments(assignmentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Assignment)));
       setRegistrations(regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRegistration)));
       
@@ -79,10 +85,10 @@ const Reports: React.FC = () => {
     return acc + ((parseFloat(String(reg.duration)) || 0) * rate);
   }, 0);
 
-  // HELPER: Afbeelding laden vanaf URL
   const loadImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
+      img.crossOrigin = 'anonymous'; // Voorkom CORS problemen bij PDF export
       img.src = url;
       img.onload = () => resolve(img);
       img.onerror = reject;
@@ -94,20 +100,16 @@ const Reports: React.FC = () => {
     const monthLabel = format(parseISO(`${selectedMonth}-01`), 'MMMM yyyy', { locale: nl });
     const logoUrl = 'https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg';
     
-    // --- AFBEELDING LADEN VOOR DE PDF ---
     try {
       const img = await loadImage(logoUrl);
-      // addImage(img, format, x, y, width, height)
-      // Breedte van 40mm past mooi bovenaan
       doc.addImage(img, 'JPEG', 14, 10, 40, 15);
     } catch (e) {
       console.error("Logo kon niet worden geladen:", e);
     }
 
-    // Header & Tekst (Iets verlaagd voor het logo)
     doc.setFontSize(22);
-    doc.setTextColor(219, 39, 119); // Pink-600
-    doc.text('Urenrapportage', 14, 35); // Y was 25, nu 35
+    doc.setTextColor(219, 39, 119); 
+    doc.text('Urenrapportage', 14, 35);
     
     doc.setFontSize(10);
     doc.setTextColor(100);
@@ -116,7 +118,7 @@ const Reports: React.FC = () => {
 
     const tableData = filteredRegistrations.map(reg => {
       const assignment = assignments.find(a => a.id === reg.assignmentId);
-      const zzpInfo = zzps.find(z => z.uid === reg.uid) || (profile?.uid === reg.uid ? profile : null);
+      const zzpInfo = zzps.find(z => z.uid === reg.uid);
       const clientInfo = clients.find(c => c.id === assignment?.clientId);
       const duration = parseFloat(String(reg.duration)) || 0;
       const rate = parseFloat(String(assignment?.hourlyRate)) || 0;
@@ -124,7 +126,7 @@ const Reports: React.FC = () => {
       
       const row = [
         format(parseISO(reg.date), 'dd-MM-yyyy'),
-        zzpInfo ? `${zzpInfo.firstName} ${zzpInfo.lastName}` : 'Onbekend',
+        getUserDisplayName(zzpInfo), // Gebruik displayName helper
         clientInfo?.name || 'Onbekend',
         duration.toFixed(1) + 'u',
       ];
@@ -139,7 +141,7 @@ const Reports: React.FC = () => {
     head.push('Subtotaal');
 
     autoTable(doc, {
-      startY: 55, // Tabel start iets lager
+      startY: 55,
       head: [head],
       body: tableData,
       theme: 'striped',
@@ -159,19 +161,19 @@ const Reports: React.FC = () => {
     doc.save(`Rapportage_${selectedMonth}.pdf`);
   };
 
-  if (loading) return <div className="p-12 text-center text-pink-600 font-black uppercase tracking-widest">Rapporten laden...</div>;
+  if (loading) return <div className="p-20 text-center text-pink-600 font-black uppercase tracking-widest animate-pulse">Rapporten laden...</div>;
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto px-4 py-8 animate-in fade-in duration-700">
+    <div className="space-y-8 max-w-7xl mx-auto px-4 py-8">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-gray-900 tracking-tight">Rapportage</h1>
-          <p className="text-gray-500 font-medium text-lg">Download overzichten van goedgekeurde uren.</p>
+          <h1 className="text-4xl font-black text-gray-900 tracking-tight uppercase">Rapportage</h1>
+          <p className="text-gray-500 font-medium text-lg">Maandoverzicht van goedgekeurde uren.</p>
         </div>
         <button
           onClick={generatePDF}
           disabled={filteredRegistrations.length === 0}
-          className="flex items-center justify-center gap-3 rounded-2xl bg-[#111827] px-8 py-4 text-white font-black hover:bg-black disabled:opacity-30 transition-all shadow-xl"
+          className="flex items-center justify-center gap-3 rounded-2xl bg-[#111827] px-8 py-4 text-white font-black hover:bg-black disabled:opacity-30 transition-all shadow-xl uppercase tracking-widest text-xs"
         >
           <Download size={20} />
           <span>Export PDF</span>
@@ -182,12 +184,19 @@ const Reports: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm transition-all hover:shadow-md">
         <FilterSelect label="Maand" icon={<Calendar size={16}/>} type="month" value={selectedMonth} onChange={setSelectedMonth} />
         {profile?.role === 'admin' && (
-          <FilterSelect label="ZZP'er" icon={<User size={16}/>} value={selectedZzpId} onChange={setSelectedZzpId} options={zzps.map(z => ({ value: z.uid, label: `${z.firstName} ${z.lastName}` }))} allowAll />
+          <FilterSelect 
+            label="ZZP'er" 
+            icon={<User size={16}/>} 
+            value={selectedZzpId} 
+            onChange={setSelectedZzpId} 
+            options={zzps.filter(z => z.role === 'zzp').map(z => ({ value: z.uid, label: getUserDisplayName(z) }))} 
+            allowAll 
+          />
         )}
         <FilterSelect label="Opdrachtgever" icon={<Building2 size={16}/>} value={selectedClientId} onChange={setSelectedClientId} options={clients.map(c => ({ value: c.id, label: c.name }))} allowAll />
       </div>
 
-      {/* Dashboard Preview Cards */}
+      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-pink-600 p-8 rounded-[2.5rem] text-white shadow-lg flex items-center justify-between group overflow-hidden relative">
           <div className="relative z-10">
@@ -206,23 +215,23 @@ const Reports: React.FC = () => {
       </div>
 
       {/* Preview Table */}
-      <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden transition-all hover:shadow-md">
-        <div className="px-8 py-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
-          <h2 className="font-black text-gray-900 uppercase tracking-widest text-xs">Preview goedgekeurde uren</h2>
+      <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-8 py-6 border-b border-gray-50 bg-gray-50/30">
+          <h2 className="font-black text-gray-900 uppercase tracking-widest text-[10px]">Preview goedgekeurde uren</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-white text-[10px] font-black uppercase tracking-widest text-gray-400">
               <tr>
-                <th className="px-8 py-4">Datum</th>
-                <th className="px-8 py-4">ZZP'er</th>
-                <th className="px-8 py-4 text-right">Uren</th>
-                <th className="px-8 py-4 text-right">Totaal</th>
+                <th className="px-8 py-5">Datum</th>
+                <th className="px-8 py-5">ZZP'er</th>
+                <th className="px-8 py-5 text-right">Uren</th>
+                <th className="px-8 py-5 text-right">Subtotaal</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filteredRegistrations.map((reg) => {
-                const zzp = zzps.find(z => z.uid === reg.uid) || (profile?.uid === reg.uid ? profile : null);
+                const zzp = zzps.find(z => z.uid === reg.uid);
                 const assignment = assignments.find(a => a.id === reg.assignmentId);
                 const duration = parseFloat(String(reg.duration)) || 0;
                 const rate = parseFloat(String(assignment?.hourlyRate)) || 0;
@@ -230,15 +239,15 @@ const Reports: React.FC = () => {
 
                 return (
                   <tr key={reg.id} className="hover:bg-gray-50/50">
-                    <td className="px-8 py-5 font-bold">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
-                    <td className="px-8 py-5 text-gray-600 font-medium">{zzp?.firstName} {zzp?.lastName}</td>
-                    <td className="px-8 py-5 text-right font-black">{reg.duration}u</td>
+                    <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
+                    <td className="px-8 py-5 text-gray-600 font-medium">{getUserDisplayName(zzp)}</td>
+                    <td className="px-8 py-5 text-right font-black">{duration.toFixed(1)}u</td>
                     <td className="px-8 py-5 text-right font-black text-pink-600">€ {total.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
                   </tr>
                 );
               })}
               {filteredRegistrations.length === 0 && (
-                <tr><td colSpan={4} className="px-8 py-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Geen goedgekeurde data voor deze selectie.</td></tr>
+                <tr><td colSpan={4} className="px-8 py-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Geen data voor deze selectie.</td></tr>
               )}
             </tbody>
           </table>
@@ -250,13 +259,13 @@ const Reports: React.FC = () => {
 
 const FilterSelect = ({ label, icon, value, onChange, options = [], type = "select", allowAll = false }: any) => (
   <div className="space-y-2">
-    <label className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400 tracking-widest">
+    <label className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">
       {icon} {label}
     </label>
     {type === "month" ? (
-      <input type="month" value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none" />
+      <input type="month" value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none" />
     ) : (
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none">
         {allowAll && <option value="all">Alle {label}s</option>}
         {options.map((opt: any) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
       </select>
