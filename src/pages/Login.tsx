@@ -30,7 +30,7 @@ const Login: React.FC = () => {
         <div className="text-center">
           <img
             className="mx-auto h-24 w-auto"
-            src="https://www.mijnezorgzuster.nl/wp-content/uploads/2021/04/Logo-Mijn-Zorgzuster-RGB-1.png"
+            src="https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg"
             alt="Mijn Zorgzuster"
           />
           <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
