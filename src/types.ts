@@ -7,6 +7,7 @@ export interface UserProfile {
   email: string;
   phone?: string;
   role: UserRole;
+  displayName?: string; // Optioneel: handig voor weergave in lijsten
 }
 
 export interface Client {
@@ -20,7 +21,7 @@ export interface Client {
 export interface Assignment {
   id: string;
   clientId: string;
-  zzpId: string;
+  uid: string; // AANGEPAST: was zzpId
   title: string;
   description?: string;
   startDate: string;
@@ -33,7 +34,7 @@ export type RegistrationStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 export interface TimeRegistration {
   id: string;
   assignmentId: string;
-  zzpId: string;
+  uid: string; // AANGEPAST: was zzpId
   date: string;
   startTime: string;
   endTime: string;
@@ -44,4 +45,6 @@ export interface TimeRegistration {
   submittedAt?: string;
   approvedAt?: string;
   rejectionReason?: string;
+  createdAt?: string; // Handig voor sortering
+  updatedAt?: string;
 }
