@@ -34,11 +34,19 @@ const Assignments: React.FC = () => {
     try {
       const assignSnap = await getDocs(collection(db, 'assignments'));
       const clientSnap = await getDocs(collection(db, 'clients'));
+      // Haal specifiek de ZZP'ers op
       const zzpSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'zzp')));
 
       setAssignments(assignSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Assignment)));
       setClients(clientSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
-      setZzps(zzpSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
+      
+      const zzpList = zzpSnap.docs.map(doc => ({ 
+        uid: doc.id, 
+        ...doc.data() 
+      } as UserProfile));
+      
+      setZzps(zzpList);
+      console.log("Geladen ZZP'ers:", zzpList); // Debug om namen te checken in console
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -65,41 +73,22 @@ const Assignments: React.FC = () => {
 
   const resetForm = () => {
     setFormData({ 
-      clientId: '', uid: '', title: '', description: '', startDate: '', endDate: '', hourlyRate: 0, status: 'active'
+      clientId: '', uid: '', title: '', description: '', startDate: '', endDate: '', hourlyRate: 0, status: 'active' 
     });
-  };
-
-  const handleEdit = (assignment: Assignment) => {
-    setEditingAssignment(assignment);
-    setFormData({
-      clientId: assignment.clientId,
-      uid: assignment.uid || '', 
-      title: assignment.title,
-      description: assignment.description || '',
-      startDate: assignment.startDate,
-      endDate: assignment.endDate || '',
-      hourlyRate: assignment.hourlyRate || 0,
-      status: (assignment as any).status || 'active'
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Weet u zeker dat u deze opdracht wilt verwijderen?')) {
-      try {
-        await deleteDoc(doc(db, 'assignments', id));
-        fetchData();
-      } catch (error) {
-        console.error('Error deleting assignment:', error);
-      }
-    }
   };
 
   const getClientName = (id: string) => clients.find(c => c.id === id)?.name || 'Onbekend';
-  const getZzpName = (uid: string) => {
+  
+  // Verbeterde naam-helper voor zowel tabel als dropdown
+  const formatZzpName = (zzp?: UserProfile) => {
+    if (!zzp) return 'Onbekend';
+    const fullName = `${zzp.firstName || ''} ${zzp.lastName || ''}`.trim();
+    return fullName || zzp.displayName || zzp.email || 'Naamloze ZZP';
+  };
+
+  const getZzpNameById = (uid: string) => {
     const zzp = zzps.find(z => z.uid === uid);
-    if (!zzp) return 'Laden...';
-    return zzp.displayName || `${zzp.firstName || ''} ${zzp.lastName || ''}`.trim() || zzp.email;
+    return formatZzpName(zzp);
   };
 
   return (
@@ -136,13 +125,31 @@ const Assignments: React.FC = () => {
                 <tr key={assignment.id} className="hover:bg-pink-50/5 transition-colors">
                   <td className="px-8 py-5 font-bold text-gray-900">{assignment.title}</td>
                   <td className="px-8 py-5 text-gray-600 font-medium">{getClientName(assignment.clientId)}</td>
-                  <td className="px-8 py-5 font-bold text-gray-900">{getZzpName(assignment.uid)}</td>
+                  <td className="px-8 py-5 font-bold text-gray-900">{getZzpNameById(assignment.uid)}</td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex justify-end space-x-2">
-                      <button onClick={() => handleEdit(assignment)} className="p-2 text-gray-400 hover:text-blue-600">
+                      <button onClick={() => {
+                        setEditingAssignment(assignment);
+                        setFormData({
+                          clientId: assignment.clientId,
+                          uid: assignment.uid || '',
+                          title: assignment.title,
+                          description: assignment.description || '',
+                          startDate: assignment.startDate,
+                          endDate: assignment.endDate || '',
+                          hourlyRate: assignment.hourlyRate || 0,
+                          status: (assignment as any).status || 'active'
+                        });
+                        setIsModalOpen(true);
+                      }} className="p-2 text-gray-400 hover:text-blue-600">
                         <Pencil className="h-5 w-5" />
                       </button>
-                      <button onClick={() => handleDelete(assignment.id)} className="p-2 text-gray-400 hover:text-red-600">
+                      <button onClick={async () => {
+                        if (window.confirm('Verwijderen?')) {
+                          await deleteDoc(doc(db, 'assignments', assignment.id));
+                          fetchData();
+                        }
+                      }} className="p-2 text-gray-400 hover:text-red-600">
                         <Trash2 className="h-5 w-5" />
                       </button>
                     </div>
@@ -174,8 +181,12 @@ const Assignments: React.FC = () => {
                 <div>
                   <label className="text-xs font-black uppercase text-gray-400 mb-1 block">ZZP'er</label>
                   <select required value={formData.uid} onChange={(e) => setFormData({ ...formData, uid: e.target.value })} className="w-full rounded-xl border-gray-100 bg-gray-50 p-4 font-bold">
-                    <option value="">Kies...</option>
-                    {zzps.map(z => <option key={z.uid} value={z.uid}>{z.firstName} {z.lastName}</option>)}
+                    <option value="">Selecteer ZZP'er...</option>
+                    {zzps.map(z => (
+                      <option key={z.uid} value={z.uid}>
+                        {formatZzpName(z)}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
