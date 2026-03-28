@@ -23,7 +23,7 @@ console.log("Config Check:", firebaseConfig.apiKey ? "Sleutel aanwezig" : "Sleut
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 // Voor Firestore gebruiken we de standaard database, tenzij je een specifieke ID hebt
-export const db = getFirestore(app); 
+export const db = getFirestore(app, "ai-studio-26fd128e-1b0d-4795-b48e-cd67f574941b");
 export const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
