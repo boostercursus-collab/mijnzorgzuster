@@ -54,41 +54,45 @@ const Assignments: React.FC = () => {
     return zzp.displayName || zzp.email || 'Naamloze ZZP';
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // We maken een schoon object voor Firestore
-    const submissionData = {
-      clientId: formData.clientId,
-      uid: formData.uid, // Dit MOET de Auth UID zijn van de ZZP'er
-      title: formData.title,
-      description: formData.description,
-      startDate: formData.startDate,
-      endDate: formData.endDate || null,
-      hourlyRate: Number(formData.hourlyRate),
-      status: formData.status,
-      updatedAt: serverTimestamp()
-    };
+  // Zoek de handleSubmit functie in je Assignments.tsx en vervang deze:
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
 
-    try {
-      if (editingAssignment) {
-        await updateDoc(doc(db, 'assignments', editingAssignment.id), submissionData);
-      } else {
-        // Bij nieuwe opdrachten voegen we ook een createdAt toe
-        await addDoc(collection(db, 'assignments'), {
-          ...submissionData,
-          createdAt: serverTimestamp()
-        });
-      }
-      setIsModalOpen(false);
-      resetForm();
-      fetchData();
-      alert("Opdracht succesvol opgeslagen!");
-    } catch (error) {
-      console.error('Error saving assignment:', error);
-      alert("Fout bij opslaan: " + error);
-    }
+  // Controleer of er een ZZP'er en Klant zijn geselecteerd
+  if (!formData.uid || !formData.clientId) {
+    alert("Selecteer eerst een ZZP'er en een opdrachtgever.");
+    return;
+  }
+
+  const submissionData = {
+    title: formData.title,
+    clientId: formData.clientId, // De Document ID van de klant
+    uid: formData.uid,           // De Document ID (Auth UID) van de ZZP'er
+    description: formData.description || '',
+    startDate: formData.startDate,
+    endDate: formData.endDate || null,
+    hourlyRate: Number(formData.hourlyRate),
+    status: formData.status || 'active',
+    updatedAt: serverTimestamp()
   };
+
+  try {
+    if (editingAssignment) {
+      await updateDoc(doc(db, 'assignments', editingAssignment.id), submissionData);
+    } else {
+      await addDoc(collection(db, 'assignments'), {
+        ...submissionData,
+        createdAt: serverTimestamp()
+      });
+    }
+    setIsModalOpen(false);
+    resetForm();
+    fetchData(); // Vernieuw de lijst
+    alert("Opdracht succesvol gekoppeld!");
+  } catch (error) {
+    console.error('Opslaan mislukt:', error);
+  }
+};
 
   const resetForm = () => {
     setEditingAssignment(null);
