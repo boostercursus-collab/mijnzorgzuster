@@ -11,7 +11,8 @@ import {
   LogOut,
   Menu,
   X,
-  FileText
+  FileText,
+  ShieldCheck // Nieuwe icoon voor beheer
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -21,7 +22,6 @@ const Layout: React.FC = () => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
-  // De nieuwe logo URL
   const logoUrl = "https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg";
 
   const handleLogout = async () => {
@@ -32,6 +32,8 @@ const Layout: React.FC = () => {
   const menuItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['admin', 'zzp'] },
     { name: 'Urenregistratie', path: '/uren', icon: Clock, roles: ['admin', 'zzp'] },
+    // Admin Only secties
+    { name: 'Gebruikersbeheer', path: '/admin', icon: ShieldCheck, roles: ['admin'] },
     { name: 'Opdrachtgevers', path: '/opdrachtgevers', icon: Building2, roles: ['admin'] },
     { name: 'Opdrachten', path: '/opdrachten', icon: Briefcase, roles: ['admin'] },
     { name: 'ZZP\'ers', path: '/zzp', icon: Users, roles: ['admin'] },
@@ -141,16 +143,5 @@ const Layout: React.FC = () => {
     </div>
   );
 };
-export const metadata: Metadata = {
-  title: "MijnZorgzuster",
-  description: "Urenregistratie voor ZZP'ers",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "MijnZorgzuster",
-    // Hier plak je de logo link nog een keer specifiek voor iPhone
-    startupImage: "https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg",
-  },
-};
+
 export default Layout;
