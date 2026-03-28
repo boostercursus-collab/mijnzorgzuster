@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { TimeRegistration, Assignment } from '../types';
-import { Calendar, List, Save, Trash2, ClipboardList } from 'lucide-react';
+import { Calendar, List, Save, Trash2, CheckCircle2 } from 'lucide-react';
 import { format, startOfWeek, addDays, parseISO } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -31,6 +31,7 @@ const TimeRegistrations: React.FC = () => {
     if (!user) return;
 
     try {
+      // Haal profiel, alle users (voor admin) en alle opdrachten op
       const [userDoc, usersSnap, assignSnap] = await Promise.all([
         getDoc(doc(db, 'users', user.uid)),
         getDocs(collection(db, 'users')),
@@ -46,11 +47,12 @@ const TimeRegistrations: React.FC = () => {
 
       const isAdmin = profile.role === 'admin';
       
+      // FIX: Als het een ZZP'er is, zet zijn eigen UID vast en filter opdrachten
       if (!isAdmin) {
         setSelectedZzpUid(user.uid);
-        // Filter direct de opdrachten voor deze ZZP'er
         const myAssignments = allAssignments.filter(a => a.uid === user.uid);
-        if (myAssignments.length === 1) {
+        if (myAssignments.length > 0) {
+          // Selecteer automatisch de eerste actieve opdracht
           setSelectedAssignmentId(myAssignments[0].id);
         }
       }
@@ -70,7 +72,7 @@ const TimeRegistrations: React.FC = () => {
   };
 
   const getUserName = (user: any) => {
-    if (!user) return 'Onbekend';
+    if (!user) return 'Laden...';
     return user.displayName || user.email || 'Gebruiker';
   };
 
@@ -78,7 +80,7 @@ const TimeRegistrations: React.FC = () => {
 
   const handleSaveWeek = async () => {
     if (!selectedAssignmentId || !selectedZzpUid) {
-      alert("Selecteer eerst een ZZP'er en een opdracht.");
+      alert("Geen actieve opdracht geselecteerd.");
       return;
     }
 
@@ -103,79 +105,63 @@ const TimeRegistrations: React.FC = () => {
     });
 
     if (hasData) {
-      try {
-        await batch.commit();
-        alert("Weekoverzicht succesvol opgeslagen!");
-        setWeekHours({'0':'','1':'','2':'','3':'','4':'','5':'','6':''});
-        fetchInitialData();
-        setView('list');
-      } catch (err) {
-        console.error("Opslaan mislukt:", err);
-      }
-    } else {
-      alert("Vul tenminste één dag in met uren.");
+      await batch.commit();
+      alert("Uren succesvol ingediend!");
+      setWeekHours({'0':'','1':'','2':'','3':'','4':'','5':'','6':''});
+      fetchInitialData();
+      setView('list');
     }
   };
 
   return (
     <div className="p-8 space-y-6 max-w-7xl mx-auto">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <header className="flex justify-between items-end">
         <div>
-          <h1 className="text-4xl font-black text-gray-900 tracking-tight uppercase">Urenregistratie</h1>
-          <p className="text-gray-500 font-medium text-lg">Registreer en beheer gewerkte uren.</p>
+          <h1 className="text-4xl font-black text-[#111827] tracking-tight uppercase">Urenregistratie</h1>
+          <p className="text-gray-500 font-medium">Registreer je gewerkte uren per opdracht.</p>
         </div>
         
-        <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 w-fit">
-          <button 
-            onClick={() => setView('list')} 
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${view === 'list' ? 'bg-pink-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}
-          >
-            <List size={20} /> Lijst
+        <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
+          <button onClick={() => setView('list')} className={`px-5 py-2.5 rounded-xl transition-all ${view === 'list' ? 'bg-pink-600 text-white shadow-md' : 'text-gray-400'}`}>
+            <List size={20} />
           </button>
-          <button 
-            onClick={() => setView('week')} 
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${view === 'week' ? 'bg-pink-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}
-          >
-            <Calendar size={20} /> Week
+          <button onClick={() => setView('week')} className={`px-5 py-2.5 rounded-xl transition-all ${view === 'week' ? 'bg-pink-600 text-white shadow-md' : 'text-gray-400'}`}>
+            <Calendar size={20} />
           </button>
         </div>
       </header>
 
       {loading ? (
-        <div className="p-20 text-center font-black text-pink-600 animate-pulse tracking-widest uppercase">Data wordt geladen...</div>
+        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest">Laden...</div>
       ) : view === 'week' ? (
-        <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10 animate-in fade-in duration-500">
+        <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-3">
               <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
-              <select 
-                className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none transition-all" 
-                value={selectedZzpUid} 
-                onChange={(e) => { setSelectedZzpUid(e.target.value); setSelectedAssignmentId(''); }}
-                disabled={!isAdmin}
-              >
+              <div className="w-full p-5 bg-gray-50 rounded-2xl font-bold text-gray-900 border border-transparent">
                 {isAdmin ? (
-                  <>
-                    <option value="">Selecteer ZZP'er...</option>
+                  <select 
+                    className="w-full bg-transparent border-none outline-none focus:ring-0"
+                    value={selectedZzpUid}
+                    onChange={(e) => setSelectedZzpUid(e.target.value)}
+                  >
+                    <option value="">Kies ZZP'er...</option>
                     {allUsers.filter(u => u.role === 'zzp').map(u => (
                       <option key={u.uid} value={u.uid}>{getUserName(u)}</option>
                     ))}
-                  </>
-                ) : (
-                  <option value={userProfile?.uid}>{getUserName(userProfile)}</option>
-                )}
-              </select>
+                  </select>
+                ) : getUserName(userProfile)}
+              </div>
             </div>
 
             <div className="space-y-3">
               <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Actieve Opdracht</label>
               <select 
-                className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none transition-all disabled:opacity-50" 
-                disabled={!selectedZzpUid} 
+                className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none transition-all" 
                 value={selectedAssignmentId} 
                 onChange={(e) => setSelectedAssignmentId(e.target.value)}
               >
-                <option value="">Kies opdracht...</option>
+                <option value="">Selecteer de opdracht...</option>
                 {assignments.filter(a => a.uid === selectedZzpUid).map(a => (
                   <option key={a.id} value={a.id}>{a.title}</option>
                 ))}
@@ -189,11 +175,10 @@ const TimeRegistrations: React.FC = () => {
                 <span className="text-[10px] font-black text-gray-400 tracking-widest">{day}</span>
                 <input 
                   type="number" 
-                  step="0.5"
                   placeholder="0"
                   value={weekHours[idx]}
                   onChange={(e) => setWeekHours({...weekHours, [idx]: e.target.value})}
-                  className="w-full p-5 bg-gray-50 rounded-2xl text-center font-black text-xl border-none focus:ring-2 focus:ring-pink-500 transition-all outline-none"
+                  className="w-full p-5 bg-gray-50 rounded-2xl text-center font-black text-xl border-none focus:ring-2 focus:ring-pink-500 outline-none"
                 />
               </div>
             ))}
@@ -208,58 +193,55 @@ const TimeRegistrations: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden animate-in fade-in duration-500">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100">
-                <tr>
-                  <th className="px-8 py-6">Datum</th>
-                  {isAdmin && <th className="px-8 py-6">ZZP'er</th>}
-                  <th className="px-8 py-6 text-right">Uren</th>
-                  <th className="px-8 py-6">Status</th>
-                  <th className="px-8 py-6 text-right">Acties</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {registrations.map(reg => {
-                  const zzp = allUsers.find(u => u.uid === reg.uid);
-                  return (
-                    <tr key={reg.id} className="hover:bg-gray-50/30 transition-colors group">
-                      <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
-                      {isAdmin && (
-                        <td className="px-8 py-5 font-bold text-gray-900">{getUserName(zzp)}</td>
-                      )}
-                      <td className="px-8 py-5 text-right font-black text-gray-900">{reg.duration.toFixed(1)}u</td>
-                      <td className="px-8 py-5">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
-                          reg.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-                        }`}>
-                          {reg.status === 'approved' ? 'Goedgekeurd' : 'In afwachting'}
-                        </span>
-                      </td>
-                      <td className="px-8 py-5 text-right">
+        <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
+              <tr>
+                <th className="px-8 py-6">Datum</th>
+                {isAdmin && <th className="px-8 py-6">ZZP'er</th>}
+                <th className="px-8 py-6 text-right">Uren</th>
+                <th className="px-8 py-6">Status</th>
+                <th className="px-8 py-6 text-right">Acties</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {registrations.map(reg => {
+                const zzp = allUsers.find(u => u.uid === reg.uid);
+                return (
+                  <tr key={reg.id} className="hover:bg-gray-50/30 transition-colors group">
+                    <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
+                    {isAdmin && <td className="px-8 py-5 font-bold">{getUserName(zzp)}</td>}
+                    <td className="px-8 py-5 text-right font-black text-gray-900">{reg.duration}u</td>
+                    <td className="px-8 py-5">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
+                        reg.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                      }`}>
+                        {reg.status === 'approved' ? 'Goedgekeurd' : 'Wacht op akkoord'}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5 text-right flex justify-end gap-2">
+                      {isAdmin && reg.status === 'pending' && (
                         <button onClick={async () => {
-                           if(window.confirm("Deze registratie verwijderen?")) {
-                             await deleteDoc(doc(db, 'timeRegistrations', reg.id));
-                             fetchInitialData();
-                           }
-                        }} className="p-2 text-gray-300 hover:text-red-600 transition-all opacity-0 group-hover:opacity-100">
-                          <Trash2 size={18} />
+                          await updateDoc(doc(db, 'timeRegistrations', reg.id), { status: 'approved' });
+                          fetchInitialData();
+                        }} className="p-2 text-gray-300 hover:text-green-600 transition-all">
+                          <CheckCircle2 size={18} />
                         </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {registrations.length === 0 && (
-                  <tr>
-                    <td colSpan={isAdmin ? 5 : 4} className="px-8 py-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
-                      Geen urenregistraties gevonden.
+                      )}
+                      <button onClick={async () => {
+                         if(window.confirm("Verwijderen?")) {
+                           await deleteDoc(doc(db, 'timeRegistrations', reg.id));
+                           fetchInitialData();
+                         }
+                      }} className="p-2 text-gray-300 hover:text-red-600 transition-all opacity-0 group-hover:opacity-100">
+                        <Trash2 size={18} />
+                      </button>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
