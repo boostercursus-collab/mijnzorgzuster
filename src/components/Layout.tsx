@@ -141,5 +141,16 @@ const Layout: React.FC = () => {
     </div>
   );
 };
-
+export const metadata: Metadata = {
+  title: "MijnZorgzuster",
+  description: "Urenregistratie voor ZZP'ers",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "MijnZorgzuster",
+    // Hier plak je de logo link nog een keer specifiek voor iPhone
+    startupImage: "https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg",
+  },
+};
 export default Layout;
