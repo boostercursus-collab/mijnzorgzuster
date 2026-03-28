@@ -68,7 +68,7 @@ const Reports: React.FC = () => {
     
     // Add Logo
     try {
-      const logoUrl = 'https://www.mijnezorgzuster.nl/wp-content/uploads/2021/04/Logo-Mijn-Zorgzuster-RGB-1.png';
+      const logoUrl = 'https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg';
       const img = new Image();
       img.src = logoUrl;
       await new Promise((resolve, reject) => {
