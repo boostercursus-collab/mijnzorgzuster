@@ -21,6 +21,9 @@ const Layout: React.FC = () => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
+  // De nieuwe logo URL
+  const logoUrl = "https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg";
+
   const handleLogout = async () => {
     await logOut();
     navigate('/login');
@@ -41,9 +44,9 @@ const Layout: React.FC = () => {
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar for Desktop */}
       <aside className="hidden w-64 flex-col border-r bg-white md:flex">
-        <div className="flex h-20 items-center justify-center border-bottom p-4">
+        <div className="flex h-20 items-center justify-center border-b p-4">
           <img 
-            src="https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg" 
+            src={logoUrl} 
             alt="Mijn Zorgzuster" 
             className="h-12 object-contain"
           />
@@ -80,7 +83,7 @@ const Layout: React.FC = () => {
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex h-16 items-center justify-between border-b bg-white px-4 md:hidden">
           <img 
-            src="https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg" 
+            src={logoUrl} 
             alt="Mijn Zorgzuster" 
             className="h-8 object-contain"
           />
@@ -94,7 +97,7 @@ const Layout: React.FC = () => {
           <div className="fixed inset-0 z-50 bg-white md:hidden">
             <div className="flex h-16 items-center justify-between border-b px-4">
               <img 
-                src="https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg" 
+                src={logoUrl} 
                 alt="Mijn Zorgzuster" 
                 className="h-8 object-contain"
               />
