@@ -22,31 +22,29 @@ const TimeRegistrations: React.FC = () => {
     '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': ''
   });
 
+  // Aangepaste Stap 2: Gefilterde query voor ZZP'ers
   const updateAssignmentsFilter = useCallback(async (targetUid: string, adminStatus: boolean) => {
     try {
       const assignmentsRef = collection(db, 'assignments');
-      
-      // We halen alle assignments op en filteren lokaal om complexe Firebase index-fouten te voorkomen
-      const assignSnap = await getDocs(assignmentsRef);
-      const allAssigns = assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      
-      console.log("Database resultaat (assignments):", allAssigns);
-      console.log("Zoeken naar koppeling met UID:", targetUid);
+      let q;
 
-      let filtered;
       if (adminStatus && !targetUid) {
-        filtered = allAssigns;
+        // Admin ziet alles
+        q = query(assignmentsRef);
       } else {
-        // Robuuste filter: checkt uid, zzpId, verwijdert spaties en is hoofdletter-ongevoelig
-        filtered = allAssigns.filter(a => {
-          const aUid = (a.uid || "").toString().trim().toLowerCase();
-          const aZzpId = (a.zzpId || "").toString().trim().toLowerCase();
-          const searchUid = targetUid.trim().toLowerCase();
-          return aUid === searchUid || aZzpId === searchUid;
-        });
+        // ZZP'er ziet ALLEEN opdrachten waar uid gelijk is aan zijn eigen ID
+        // Dit voorkomt 'Permission Denied' errors bij de nieuwe Security Rules
+        q = query(assignmentsRef, where('uid', '==', targetUid));
       }
+
+      const assignSnap = await getDocs(q);
+      const filtered = assignSnap.docs.map(d => ({ 
+        id: d.id, 
+        ...d.data() 
+      } as Assignment));
+
+      console.log(`Gevonden opdrachten voor ${targetUid}:`, filtered.length);
       
-      console.log("Gefilterde resultaten:", filtered);
       setAssignments(filtered);
       setSelectedAssignmentId(filtered.length > 0 ? filtered[0].id : '');
     } catch (err) {
