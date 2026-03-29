@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { TimeRegistration, Assignment } from '../types';
@@ -11,7 +11,7 @@ const TimeRegistrations: React.FC = () => {
   const [currentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [registrations, setRegistrations] = useState<TimeRegistration[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [allUsers, setAllUsers] = useState<any[]>([]); // Voor de admin dropdown
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -23,23 +23,39 @@ const TimeRegistrations: React.FC = () => {
     '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': ''
   });
 
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        fetchInitialData(user);
-      }
-    });
-    return () => unsubscribe();
+  // Functie om assignments te filteren op basis van UID
+  const updateAssignmentsFilter = useCallback(async (targetUid: string) => {
+    if (!targetUid) return;
+    
+    try {
+      const assignSnap = await getDocs(collection(db, 'assignments'));
+      const filtered = assignSnap.docs
+        .map(d => ({ id: d.id, ...d.data() } as Assignment))
+        // Check of het veld in Firestore inderdaad 'uid' heet
+        .filter(a => String(a.uid) === String(targetUid));
+      
+      setAssignments(filtered);
+      // Selecteer automatisch de eerste opdracht als die er is
+      setSelectedAssignmentId(filtered.length > 0 ? filtered[0].id : '');
+    } catch (err) {
+      console.error("Fout bij ophalen opdrachten:", err);
+    }
   }, []);
 
-  // Effect om opdrachten te filteren zodra de geselecteerde ZZP'er wijzigt (voor Admin)
-  useEffect(() => {
-    if (selectedZzpUid) {
-      updateAssignmentsFilter(selectedZzpUid);
+  const fetchRegistrations = useCallback(async (uid: string, adminStatus: boolean) => {
+    try {
+      const regQuery = adminStatus 
+        ? query(collection(db, 'timeRegistrations'), orderBy('date', 'desc'))
+        : query(collection(db, 'timeRegistrations'), where('uid', '==', uid), orderBy('date', 'desc'));
+      
+      const regSnap = await getDocs(regQuery);
+      setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeRegistration)));
+    } catch (err) {
+      console.error("Fout bij ophalen registraties:", err);
     }
-  }, [selectedZzpUid]);
+  }, []);
 
-  const fetchInitialData = async (currentUser: any) => {
+  const fetchInitialData = useCallback(async (currentUser: any) => {
     setLoading(true);
     try {
       const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
@@ -50,40 +66,38 @@ const TimeRegistrations: React.FC = () => {
       setUserProfile({ uid: currentUser.uid, ...userData });
 
       if (adminStatus) {
-        // Admin: Haal alle ZZP'ers op
+        // Admin flow
         const usersSnap = await getDocs(collection(db, 'users'));
         setAllUsers(usersSnap.docs.map(d => ({ uid: d.id, ...d.data() })));
       } else {
-        // ZZP'er: Zet eigen UID vast en haal opdrachten op
+        // ZZP flow: Zet UID en haal DIRECT de opdrachten op
         setSelectedZzpUid(currentUser.uid);
+        await updateAssignmentsFilter(currentUser.uid);
       }
 
       await fetchRegistrations(currentUser.uid, adminStatus);
     } catch (err) {
-      console.error("Data ophalen mislukt:", err);
+      console.error("Initial data fetch mislukt:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [updateAssignmentsFilter, fetchRegistrations]);
 
-  const updateAssignmentsFilter = async (targetUid: string) => {
-    const assignSnap = await getDocs(collection(db, 'assignments'));
-    const filtered = assignSnap.docs
-      .map(d => ({ id: d.id, ...d.data() } as Assignment))
-      .filter(a => String(a.uid) === String(targetUid));
-    
-    setAssignments(filtered);
-    setSelectedAssignmentId(filtered.length > 0 ? filtered[0].id : '');
-  };
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchInitialData(user);
+      }
+    });
+    return () => unsubscribe();
+  }, [fetchInitialData]);
 
-  const fetchRegistrations = async (uid: string, adminStatus: boolean) => {
-    const regQuery = adminStatus 
-      ? query(collection(db, 'timeRegistrations'), orderBy('date', 'desc'))
-      : query(collection(db, 'timeRegistrations'), where('uid', '==', uid), orderBy('date', 'desc'));
-    
-    const regSnap = await getDocs(regQuery);
-    setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeRegistration)));
-  };
+  // Effect voor Admin: als de dropdown wijzigt, haal nieuwe assignments
+  useEffect(() => {
+    if (isAdmin && selectedZzpUid) {
+      updateAssignmentsFilter(selectedZzpUid);
+    }
+  }, [selectedZzpUid, isAdmin, updateAssignmentsFilter]);
 
   const handleSaveWeek = async () => {
     if (!selectedAssignmentId || !selectedZzpUid) {
@@ -112,11 +126,16 @@ const TimeRegistrations: React.FC = () => {
     });
 
     if (hasData) {
-      await batch.commit();
-      alert("Uren succesvol opgeslagen!");
-      setWeekHours({'0':'','1':'','2':'','3':'','4':'','5':'','6':''});
-      fetchRegistrations(userProfile.uid, isAdmin);
-      setView('list');
+      try {
+        await batch.commit();
+        alert("Uren succesvol opgeslagen!");
+        setWeekHours({'0':'','1':'','2':'','3':'','4':'','5':'','6':''});
+        fetchRegistrations(userProfile.uid, isAdmin);
+        setView('list');
+      } catch (err) {
+        console.error("Opslaan mislukt:", err);
+        alert("Er ging iets mis bij het opslaan.");
+      }
     }
   };
 
@@ -141,7 +160,7 @@ const TimeRegistrations: React.FC = () => {
             <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 
-                {/* ZZP VELD: Alleen voor Admin */}
+                {/* ZZP VELD */}
                 {isAdmin ? (
                   <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
@@ -173,10 +192,13 @@ const TimeRegistrations: React.FC = () => {
                     value={selectedAssignmentId} 
                     onChange={(e) => setSelectedAssignmentId(e.target.value)}
                   >
-                    <option value="">{assignments.length > 0 ? 'Kies opdracht...' : 'Geen opdrachten gevonden'}</option>
-                    {assignments.map(a => (
-                      <option key={a.id} value={a.id}>{a.title}</option>
-                    ))}
+                    {assignments.length > 0 ? (
+                      assignments.map(a => (
+                        <option key={a.id} value={a.id}>{a.title}</option>
+                      ))
+                    ) : (
+                      <option value="">Geen opdrachten gevonden</option>
+                    )}
                   </select>
                 </div>
               </div>
@@ -204,7 +226,6 @@ const TimeRegistrations: React.FC = () => {
               </button>
             </div>
           ) : (
-            /* Lijst weergave blijft gelijk aan jouw origineel */
             <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
                <table className="w-full text-left">
                 <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
@@ -226,6 +247,11 @@ const TimeRegistrations: React.FC = () => {
                       </td>
                     </tr>
                   ))}
+                  {registrations.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-8 py-10 text-center text-gray-400 font-bold">Nog geen uren geregistreerd</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
