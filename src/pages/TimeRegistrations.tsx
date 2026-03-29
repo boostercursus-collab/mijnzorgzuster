@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { TimeRegistration, Assignment } from '../types';
-import { Calendar, List, Save, ChevronLeft, ChevronRight, CheckCircle, User } from 'lucide-react';
+import { Calendar, List, Save, ChevronLeft, ChevronRight, CheckCircle, User, CheckCheck } from 'lucide-react';
 import { format, startOfWeek, addDays, parseISO, subWeeks, addWeeks } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -98,6 +98,35 @@ const TimeRegistrations: React.FC = () => {
     }
   };
 
+  // NIEUWE FUNCTIE: Alles in één keer accorderen
+  const handleApproveAll = async () => {
+    const toApprove = filteredRegistrations.filter(r => r.status !== 'approved');
+    if (toApprove.length === 0) return;
+
+    if (!window.confirm(`Weet je zeker dat je alle ${toApprove.length} registraties wilt goedkeuren?`)) return;
+
+    try {
+      const batch = writeBatch(db);
+      toApprove.forEach(reg => {
+        const docRef = doc(db, 'timeRegistrations', reg.id);
+        batch.update(docRef, { status: 'approved' });
+      });
+
+      await batch.commit();
+      
+      // Update lokale state
+      setRegistrations(prev => prev.map(r => {
+        const wasFiltered = toApprove.find(ta => ta.id === r.id);
+        return wasFiltered ? { ...r, status: 'approved' } : r;
+      }));
+      
+      alert("Alles is succesvol geaccordeerd!");
+    } catch (err) {
+      console.error(err);
+      alert("Batch goedkeuring mislukt.");
+    }
+  };
+
   const handleSaveWeek = async () => {
     if (!selectedAssignmentId || !selectedZzpUid) return alert("Selecteer ZZP-er en opdracht.");
     const batch = writeBatch(db);
@@ -130,6 +159,11 @@ const TimeRegistrations: React.FC = () => {
 
   const filteredRegistrations = registrations.filter(r => filterZzpUid === 'all' || r.uid === filterZzpUid);
   const getZzpDisplayName = (uid: string) => allUsers.find(u => u.uid === uid)?.displayName || 'ZZP-er';
+  
+  // Check of er items zijn om goed te keuren
+  const hasPendingItems = filteredRegistrations.some(r => r.status !== 'approved');
+
+  if (loading) return <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest text-sm">Registraties laden...</div>;
 
   return (
     <div className="p-8 space-y-6 max-w-7xl mx-auto">
@@ -157,14 +191,28 @@ const TimeRegistrations: React.FC = () => {
       {view === 'list' ? (
         <div className="space-y-4">
           {isAdmin && (
-            <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
-              <User size={20} className="text-gray-400 ml-2" />
-              <select className="bg-transparent font-bold text-sm outline-none" value={filterZzpUid} onChange={(e) => setFilterZzpUid(e.target.value)}>
-                <option value="all">Alle ZZP-ers</option>
-                {allUsers.map(u => <option key={u.uid} value={u.uid}>{u.displayName || u.email}</option>)}
-              </select>
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-4 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm w-full md:w-auto">
+                <User size={20} className="text-gray-400 ml-2" />
+                <select className="bg-transparent font-bold text-sm outline-none cursor-pointer" value={filterZzpUid} onChange={(e) => setFilterZzpUid(e.target.value)}>
+                  <option value="all">Alle ZZP-ers</option>
+                  {allUsers.map(u => <option key={u.uid} value={u.uid}>{u.displayName || u.email}</option>)}
+                </select>
+              </div>
+
+              {/* De nieuwe Accorderen-knop */}
+              {hasPendingItems && (
+                <button 
+                  onClick={handleApproveAll}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-lg transition-transform hover:scale-105 active:scale-95"
+                >
+                  <CheckCheck size={18} />
+                  Alles Accorderen
+                </button>
+              )}
             </div>
           )}
+
           <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
             <table className="w-full text-left">
               <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
@@ -201,7 +249,7 @@ const TimeRegistrations: React.FC = () => {
           </div>
         </div>
       ) : (
-        /* WEEK VIEW (Zelfde als vorige stap met week-bladeren en datums boven inputs) */
+        /* WEEK VIEW */
         <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-3">
@@ -235,7 +283,7 @@ const TimeRegistrations: React.FC = () => {
                     );
                 })}
             </div>
-            <button onClick={handleSaveWeek} className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3"><Save size={20} /> Indienen</button>
+            <button onClick={handleSaveWeek} className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.01] active:scale-95"><Save size={20} /> Indienen</button>
         </div>
       )}
     </div>
