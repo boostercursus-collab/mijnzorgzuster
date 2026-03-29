@@ -16,26 +16,29 @@ const TimeRegistrations: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Selectie states
   const [selectedZzpUid, setSelectedZzpUid] = useState('');
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
   const [weekHours, setWeekHours] = useState<{ [key: string]: string }>({
     '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': ''
   });
 
-  // Functie om assignments te filteren op basis van UID
-  const updateAssignmentsFilter = useCallback(async (targetUid: string) => {
-    if (!targetUid) return;
-    
+  const updateAssignmentsFilter = useCallback(async (targetUid: string, adminStatus: boolean) => {
     try {
-      const assignSnap = await getDocs(collection(db, 'assignments'));
-      const filtered = assignSnap.docs
-        .map(d => ({ id: d.id, ...d.data() } as Assignment))
-        // Check of het veld in Firestore inderdaad 'uid' heet
-        .filter(a => String(a.uid) === String(targetUid));
+      const assignmentsRef = collection(db, 'assignments');
+      
+      // We halen alle assignments op en filteren lokaal om complexe Firebase index-fouten te voorkomen
+      const assignSnap = await getDocs(assignmentsRef);
+      const allAssigns = assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      
+      let filtered;
+      if (adminStatus && !targetUid) {
+        filtered = allAssigns;
+      } else {
+        // We filteren op UID of zzpId voor maximale compatibiliteit
+        filtered = allAssigns.filter(a => a.uid === targetUid || a.zzpId === targetUid);
+      }
       
       setAssignments(filtered);
-      // Selecteer automatisch de eerste opdracht als die er is
       setSelectedAssignmentId(filtered.length > 0 ? filtered[0].id : '');
     } catch (err) {
       console.error("Fout bij ophalen opdrachten:", err);
@@ -66,18 +69,17 @@ const TimeRegistrations: React.FC = () => {
       setUserProfile({ uid: currentUser.uid, ...userData });
 
       if (adminStatus) {
-        // Admin flow
         const usersSnap = await getDocs(collection(db, 'users'));
         setAllUsers(usersSnap.docs.map(d => ({ uid: d.id, ...d.data() })));
+        await updateAssignmentsFilter('', true);
       } else {
-        // ZZP flow: Zet UID en haal DIRECT de opdrachten op
         setSelectedZzpUid(currentUser.uid);
-        await updateAssignmentsFilter(currentUser.uid);
+        await updateAssignmentsFilter(currentUser.uid, false);
       }
 
       await fetchRegistrations(currentUser.uid, adminStatus);
     } catch (err) {
-      console.error("Initial data fetch mislukt:", err);
+      console.error("Data fetch mislukt:", err);
     } finally {
       setLoading(false);
     }
@@ -85,17 +87,14 @@ const TimeRegistrations: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        fetchInitialData(user);
-      }
+      if (user) fetchInitialData(user);
     });
     return () => unsubscribe();
   }, [fetchInitialData]);
 
-  // Effect voor Admin: als de dropdown wijzigt, haal nieuwe assignments
   useEffect(() => {
     if (isAdmin && selectedZzpUid) {
-      updateAssignmentsFilter(selectedZzpUid);
+      updateAssignmentsFilter(selectedZzpUid, true);
     }
   }, [selectedZzpUid, isAdmin, updateAssignmentsFilter]);
 
@@ -133,8 +132,7 @@ const TimeRegistrations: React.FC = () => {
         fetchRegistrations(userProfile.uid, isAdmin);
         setView('list');
       } catch (err) {
-        console.error("Opslaan mislukt:", err);
-        alert("Er ging iets mis bij het opslaan.");
+        alert("Opslaan mislukt. Controleer je rechten.");
       }
     }
   };
@@ -159,43 +157,26 @@ const TimeRegistrations: React.FC = () => {
           {view === 'week' ? (
             <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-10">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                
-                {/* ZZP VELD */}
-                {isAdmin ? (
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
-                    <select 
-                      className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none"
-                      value={selectedZzpUid}
-                      onChange={(e) => setSelectedZzpUid(e.target.value)}
-                    >
-                      <option value="">Selecteer ZZP'er...</option>
-                      {allUsers.map(u => (
-                        <option key={u.uid} value={u.uid}>{u.displayName || u.email}</option>
-                      ))}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
+                  {isAdmin ? (
+                    <select className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none outline-none" value={selectedZzpUid} onChange={(e) => setSelectedZzpUid(e.target.value)}>
+                      <option value="">Kies ZZP'er...</option>
+                      {allUsers.map(u => (<option key={u.uid} value={u.uid}>{u.displayName || u.email}</option>))}
                     </select>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP'er</label>
-                    <div className="w-full p-5 bg-gray-100 rounded-2xl font-bold text-gray-500">
-                      {userProfile?.displayName}
-                    </div>
-                  </div>
-                )}
+                  ) : (
+                    <div className="w-full p-5 bg-gray-100 rounded-2xl font-bold text-gray-500">{userProfile?.displayName}</div>
+                  )}
+                </div>
 
-                {/* OPDRACHT VELD */}
                 <div className="space-y-3">
                   <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Actieve Opdracht</label>
-                  <select 
-                    className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none focus:ring-2 focus:ring-pink-600 outline-none" 
-                    value={selectedAssignmentId} 
-                    onChange={(e) => setSelectedAssignmentId(e.target.value)}
-                  >
+                  <select className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none outline-none" value={selectedAssignmentId} onChange={(e) => setSelectedAssignmentId(e.target.value)}>
                     {assignments.length > 0 ? (
-                      assignments.map(a => (
-                        <option key={a.id} value={a.id}>{a.title}</option>
-                      ))
+                      <>
+                        <option value="">Kies opdracht...</option>
+                        {assignments.map(a => (<option key={a.id} value={a.id}>{a.title}</option>))}
+                      </>
                     ) : (
                       <option value="">Geen opdrachten gevonden</option>
                     )}
@@ -203,37 +184,24 @@ const TimeRegistrations: React.FC = () => {
                 </div>
               </div>
 
-              {/* Uren Grid */}
               <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
                 {['MA', 'DI', 'WO', 'DO', 'VR', 'ZA', 'ZO'].map((day, idx) => (
                   <div key={day} className="space-y-3 text-center">
                     <span className="text-[10px] font-black text-gray-400 tracking-widest">{day}</span>
-                    <input 
-                      type="number" step="0.5" placeholder="0"
-                      value={weekHours[idx]}
-                      onChange={(e) => setWeekHours({...weekHours, [idx]: e.target.value})}
-                      className="w-full p-5 bg-gray-50 rounded-2xl text-center font-black text-xl border-none focus:ring-2 focus:ring-pink-500 outline-none"
-                    />
+                    <input type="number" step="0.5" placeholder="0" value={weekHours[idx]} onChange={(e) => setWeekHours({...weekHours, [idx]: e.target.value})} className="w-full p-5 bg-gray-50 rounded-2xl text-center font-black text-xl border-none outline-none" />
                   </div>
                 ))}
               </div>
 
-              <button 
-                onClick={handleSaveWeek}
-                className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl uppercase tracking-widest"
-              >
+              <button onClick={handleSaveWeek} className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl uppercase tracking-widest">
                 <Save size={20} /> Weekoverzicht indienen
               </button>
             </div>
           ) : (
             <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
-               <table className="w-full text-left">
+              <table className="w-full text-left">
                 <thead className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                  <tr>
-                    <th className="px-8 py-6">Datum</th>
-                    <th className="px-8 py-6 text-right">Uren</th>
-                    <th className="px-8 py-6">Status</th>
-                  </tr>
+                  <tr><th className="px-8 py-6">Datum</th><th className="px-8 py-6 text-right">Uren</th><th className="px-8 py-6">Status</th></tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {registrations.map(reg => (
@@ -247,11 +215,6 @@ const TimeRegistrations: React.FC = () => {
                       </td>
                     </tr>
                   ))}
-                  {registrations.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-8 py-10 text-center text-gray-400 font-bold">Nog geen uren geregistreerd</td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
