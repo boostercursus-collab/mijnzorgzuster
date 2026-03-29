@@ -30,14 +30,23 @@ const TimeRegistrations: React.FC = () => {
       const assignSnap = await getDocs(assignmentsRef);
       const allAssigns = assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
       
+      console.log("Database resultaat (assignments):", allAssigns);
+      console.log("Zoeken naar koppeling met UID:", targetUid);
+
       let filtered;
       if (adminStatus && !targetUid) {
         filtered = allAssigns;
       } else {
-        // We filteren op UID of zzpId voor maximale compatibiliteit
-        filtered = allAssigns.filter(a => a.uid === targetUid || a.zzpId === targetUid);
+        // Robuuste filter: checkt uid, zzpId, verwijdert spaties en is hoofdletter-ongevoelig
+        filtered = allAssigns.filter(a => {
+          const aUid = (a.uid || "").toString().trim().toLowerCase();
+          const aZzpId = (a.zzpId || "").toString().trim().toLowerCase();
+          const searchUid = targetUid.trim().toLowerCase();
+          return aUid === searchUid || aZzpId === searchUid;
+        });
       }
       
+      console.log("Gefilterde resultaten:", filtered);
       setAssignments(filtered);
       setSelectedAssignmentId(filtered.length > 0 ? filtered[0].id : '');
     } catch (err) {
