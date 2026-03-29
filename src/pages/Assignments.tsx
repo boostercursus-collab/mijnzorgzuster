@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Plus, Briefcase, Calendar, User, Euro, List, ArrowLeft, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Briefcase, Calendar, User, Euro, ArrowLeft, Trash2, Edit2 } from 'lucide-react';
 
 const Assignments: React.FC = () => {
   const [view, setView] = useState<'list' | 'add'>('list');
@@ -39,7 +39,9 @@ const Assignments: React.FC = () => {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { 
+    fetchData(); 
+  }, []);
 
   const handleEdit = (asg: any) => {
     setEditingId(asg.id);
@@ -58,9 +60,9 @@ const Assignments: React.FC = () => {
     if (window.confirm("Weet je zeker dat je deze opdracht wilt verwijderen?")) {
       try {
         await deleteDoc(doc(db, 'assignments', id));
-        setAssignments(assignments.filter(a => a.id !== id));
+        setAssignments(prev => prev.filter(a => a.id !== id));
       } catch (err) {
-        alert("Verwijderen mislukt.");
+        console.error(err);
       }
     }
   };
@@ -86,7 +88,7 @@ const Assignments: React.FC = () => {
       setEditingId(null);
       setView('list');
     } catch (err) {
-      alert("Fout bij opslaan.");
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -102,26 +104,26 @@ const Assignments: React.FC = () => {
           <div className="p-3 bg-pink-600 rounded-2xl text-white"><Briefcase size={32} /></div>
           <div>
             <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Opdrachten</h1>
-            <p className="text-gray-500 font-medium">Beheer ZZP-koppelingen</p>
+            <p className="text-gray-500 font-medium">Beheer ZZP koppelingen</p>
           </div>
         </div>
         <button 
           onClick={() => { setView(view === 'list' ? 'add' : 'list'); setEditingId(null); setForm({title:'',clientId:'',uid:'',startDate:'',endDate:'',rate:''}); }}
-          className="bg-[#111827] text-white px-6 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-black transition-all shadow-lg uppercase text-sm"
+          className="bg-[#111827] text-white px-6 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-black transition-all shadow-lg uppercase text-sm tracking-widest"
         >
-          {view === 'list' ? <><Plus size={20} /> Nieuwe Opdracht</> : <><ArrowLeft size={20} /> Terug</>}
+          {view === 'list' ? <><Plus size={20} /> Nieuwe Opdracht</> : <><ArrowLeft size={20} /> Terug naar overzicht</>}
         </button>
       </div>
 
       {loading ? (
-        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase">Laden...</div>
+        <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest">Laden...</div>
       ) : view === 'list' ? (
         <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
           <table className="w-full text-left">
             <thead className="bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400">
               <tr>
                 <th className="px-8 py-6">Opdracht</th>
-                <th className="px-8 py-6">Klant & ZZP-er</th>
+                <th className="px-8 py-6">Klant & ZZP</th>
                 <th className="px-8 py-6 text-right">Tarief</th>
                 <th className="px-8 py-6 text-center">Acties</th>
               </tr>
@@ -131,17 +133,17 @@ const Assignments: React.FC = () => {
                 <tr key={asg.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-8 py-5">
                     <div className="font-bold text-gray-900">{asg.title}</div>
-                    <div className="text-[10px] text-gray-400 font-medium">{asg.startDate} / {asg.endDate || '∞'}</div>
+                    <div className="text-[10px] text-gray-400 font-medium uppercase tracking-tight">{asg.startDate} / {asg.endDate || 'Onbepaald'}</div>
                   </td>
                   <td className="px-8 py-5">
-                    <div className="text-sm font-bold text-gray-700">{getClientName(asg.clientId)}</div>
+                    <div className="text-sm font-bold text-gray-700 uppercase">{getClientName(asg.clientId)}</div>
                     <div className="text-xs text-pink-600 font-medium">{getZzpName(asg.uid)}</div>
                   </td>
                   <td className="px-8 py-5 text-right font-black text-gray-900">€{asg.rate}</td>
                   <td className="px-8 py-5">
-                    <div className="flex justify-center gap-2">
-                      <button onClick={() => handleEdit(asg)} className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"><Edit2 size={18} /></button>
-                      <button onClick={() => handleDelete(asg.id)} className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors"><Trash2 size={18} /></button>
+                    <div className="flex justify-center gap-4 text-gray-400">
+                      <button onClick={() => handleEdit(asg)} className="hover:text-blue-600 transition-colors"><Edit2 size={18} /></button>
+                      <button onClick={() => handleDelete(asg.id)} className="hover:text-red-600 transition-colors"><Trash2 size={18} /></button>
                     </div>
                   </td>
                 </tr>
@@ -151,8 +153,40 @@ const Assignments: React.FC = () => {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-gray-100 space-y-8 animate-in fade-in duration-500">
-          <h2 className="text-xl font-black uppercase tracking-tight text-gray-800">{editingId ? 'Opdracht Aanpassen' : 'Nieuwe Opdracht'}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="md:col-span-2 space-y-2">
-              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Titel</label>
-              <input type="text" required className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none outline-none
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Titel van de opdracht</label>
+              <input type="text" required className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none outline-none focus:ring-2 ring-pink-500/20" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Klant</label>
+                <select required className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none outline-none" value={form.clientId} onChange={(e) => setForm({...form, clientId: e.target.value})}>
+                  <option value="">Kies een klant...</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.name || c.companyName}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">ZZP</label>
+                <select required className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none outline-none" value={form.uid} onChange={(e) => setForm({...form, uid: e.target.value})}>
+                  <option value="">Kies een ZZP-er...</option>
+                  {zzps.map(z => <option key={z.uid} value={z.uid}>{z.displayName || z.email}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-2"><label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Start</label><input type="date" required className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none outline-none" value={form.startDate} onChange={(e) => setForm({...form, startDate: e.target.value})} /></div>
+              <div className="space-y-2"><label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Eind</label><input type="date" className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none outline-none" value={form.endDate} onChange={(e) => setForm({...form, endDate: e.target.value})} /></div>
+              <div className="space-y-2"><label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">Tarief</label><input type="number" step="0.01" required className="w-full p-5 bg-gray-50 rounded-2xl font-bold border-none outline-none" value={form.rate} onChange={(e) => setForm({...form, rate: e.target.value})} /></div>
+            </div>
+          </div>
+          <button type="submit" disabled={isSubmitting} className="w-full bg-pink-600 text-white py-6 rounded-3xl font-black uppercase tracking-widest shadow-xl disabled:opacity-50">
+            {isSubmitting ? 'Bezig met opslaan...' : (editingId ? 'Wijzigingen Opslaan' : 'Opdracht Aanmaken')}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+};
+
+export default Assignments;
