@@ -1,20 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, where, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Clock, Euro, Briefcase, TrendingUp, Users, Target, Filter } from 'lucide-react';
+import { Clock, Euro, TrendingUp, Users, Target, Filter } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, subMonths, parseISO, isWithinInterval } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState({ totalHours: 0, totalRevenue: 0, activeAssignments: 0, totalZzps: 0 });
   const [allActivities, setAllActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  
-  // Maand selectie state (default: huidige maand)
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
 
-  // Genereer de laatste 6 maanden voor de filter
   const monthOptions = useMemo(() => {
     return Array.from({ length: 6 }).map((_, i) => {
       const date = subMonths(new Date(), i);
@@ -79,7 +75,6 @@ const Dashboard: React.FC = () => {
     fetchDashboardData();
   }, []);
 
-  // Filter data op basis van de geselecteerde maand
   const filteredData = useMemo(() => {
     const start = startOfMonth(parseISO(`${selectedMonth}-01`));
     const end = endOfMonth(start);
@@ -110,7 +105,7 @@ const Dashboard: React.FC = () => {
           <h1 className="text-4xl font-black text-[#111827] tracking-tight uppercase">
             Dashboard <span className="text-pink-600">{isAdmin ? 'Admin' : 'ZZP'}</span>
           </h1>
-          <p className="text-gray-500 font-medium">Prestaties van {monthOptions.find(m => m.value === selectedMonth)?.label}</p>
+          <p className="text-gray-500 font-medium">Overzicht van {monthOptions.find(m => m.value === selectedMonth)?.label}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -132,20 +127,19 @@ const Dashboard: React.FC = () => {
         </div>
       </header>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard icon={<Clock size={28}/>} color="bg-blue-500" label="Uren deze maand" value={`${filteredData.totalHours.toFixed(1)}u`} />
+      {/* Geoptimaliseerde Stats Grid (nu 2 of 3 kolommen afhankelijk van rol) */}
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isAdmin ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-8`}>
+        <StatCard icon={<Clock size={32}/>} color="bg-blue-500" label="Uren deze maand" value={`${filteredData.totalHours.toFixed(1)}u`} />
         <StatCard 
-          icon={<Euro size={28}/>} 
+          icon={<Euro size={32}/>} 
           color="bg-green-500" 
           label={isAdmin ? "Commissie (10%)" : "Mijn Omzet"} 
           value={`€${filteredData.totalRevenue.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`} 
         />
-        <StatCard icon={<Briefcase size={28}/>} color="bg-purple-500" label="Projecten" value={filteredData.filtered.length.toString()} />
-        {isAdmin && <StatCard icon={<Users size={28}/>} color="bg-pink-600" label="Actieve ZZP-ers" value={filteredData.uniqueZzps.toString()} />}
+        {isAdmin && <StatCard icon={<Users size={32}/>} color="bg-pink-600" label="Actieve ZZP-ers" value={filteredData.uniqueZzps.toString()} />}
       </div>
 
-      {/* Tabel */}
+      {/* Tabel sectie blijft ongewijzigd */}
       <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
         <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/20">
           <h2 className="text-xl font-black uppercase tracking-tight text-gray-800 flex items-center gap-3">
@@ -185,11 +179,11 @@ const Dashboard: React.FC = () => {
 };
 
 const StatCard = ({ icon, color, label, value }: any) => (
-  <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex items-center gap-6 transition-all hover:shadow-md">
-    <div className={`p-4 ${color} rounded-2xl text-white shadow-lg`}>{icon}</div>
+  <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-gray-100 flex items-center gap-8 transition-all hover:shadow-md">
+    <div className={`p-5 ${color} rounded-2xl text-white shadow-lg`}>{icon}</div>
     <div>
-      <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">{label}</p>
-      <p className="text-2xl font-black text-gray-900 tracking-tight">{value}</p>
+      <p className="text-xs font-black uppercase text-gray-400 tracking-widest mb-1">{label}</p>
+      <p className="text-3xl font-black text-gray-900 tracking-tight">{value}</p>
     </div>
   </div>
 );
