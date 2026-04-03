@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, updateDoc, deleteDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { TimeRegistration, Assignment } from '../types';
 import { Calendar, List, Save, ChevronLeft, ChevronRight, CheckCircle, User, CheckCheck, Edit2, Trash2, X, Check } from 'lucide-react';
-import { format, startOfWeek, addDays, parseISO, subWeeks, addWeeks } from 'date-fns';
+import { format, startOfWeek, addDays, parseISO, subWeeks, addWeeks, isSameDay } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
 const TimeRegistrations: React.FC = () => {
@@ -93,6 +93,26 @@ const TimeRegistrations: React.FC = () => {
     return () => unsubscribe();
   }, [fetchInitialData]);
 
+  // --- LOGICA OM BESTAANDE UREN IN WEEKVIEW TE LADEN ---
+  useEffect(() => {
+    if (view === 'week' && selectedZzpUid && selectedAssignmentId) {
+      const newWeekHours = { '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': '' };
+      
+      for (let i = 0; i < 7; i++) {
+        const dateStr = format(addDays(currentWeekStart, i), 'yyyy-MM-dd');
+        const existing = registrations.find(r => 
+          r.uid === selectedZzpUid && 
+          r.assignmentId === selectedAssignmentId && 
+          r.date === dateStr
+        );
+        if (existing) {
+          newWeekHours[i as unknown as keyof typeof newWeekHours] = existing.duration.toString();
+        }
+      }
+      setWeekHours(newWeekHours);
+    }
+  }, [view, currentWeekStart, selectedZzpUid, selectedAssignmentId, registrations]);
+
   // --- ADMIN ACTIES ---
 
   const handleApprove = async (regId: string) => {
@@ -158,30 +178,56 @@ const TimeRegistrations: React.FC = () => {
   const handleSaveWeek = async () => {
     if (!selectedAssignmentId || !selectedZzpUid) return alert("Selecteer ZZP-er en opdracht.");
     const batch = writeBatch(db);
-    let hasData = false;
+    let hasChanges = false;
 
-    Object.entries(weekHours).forEach(([index, hours]) => {
+    for (const [index, hours] of Object.entries(weekHours)) {
       const numHours = parseFloat(hours);
-      if (numHours > 0) {
-        hasData = true;
-        const date = format(addDays(currentWeekStart, parseInt(index)), 'yyyy-MM-dd');
-        batch.set(doc(collection(db, 'timeRegistrations')), {
-          uid: selectedZzpUid,
-          assignmentId: selectedAssignmentId,
-          date,
-          duration: numHours,
-          status: 'pending',
-          createdAt: serverTimestamp()
-        });
-      }
-    });
+      const dateStr = format(addDays(currentWeekStart, parseInt(index)), 'yyyy-MM-dd');
+      
+      // Zoek of er al een registratie bestaat voor deze dag/opdracht/zzp
+      const existing = registrations.find(r => 
+        r.uid === selectedZzpUid && 
+        r.assignmentId === selectedAssignmentId && 
+        r.date === dateStr
+      );
 
-    if (hasData) {
-      await batch.commit();
-      alert("Opgeslagen!");
-      setWeekHours({'0':'','1':'','2':'','3':'','4':'','5':'','6':''});
-      fetchRegistrations(userProfile.uid, isAdmin);
-      setView('list');
+      if (numHours > 0) {
+        hasChanges = true;
+        if (existing) {
+          // Update bestaande
+          const docRef = doc(db, 'timeRegistrations', existing.id);
+          batch.update(docRef, { 
+            duration: numHours,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          // Nieuwe aanmaken
+          const newDocRef = doc(collection(db, 'timeRegistrations'));
+          batch.set(newDocRef, {
+            uid: selectedZzpUid,
+            assignmentId: selectedAssignmentId,
+            date: dateStr,
+            duration: numHours,
+            status: 'pending',
+            createdAt: serverTimestamp()
+          });
+        }
+      } else if (existing && (hours === '' || numHours === 0)) {
+        // Als uren op 0 zijn gezet, verwijder de registratie (optioneel, afhankelijk van gewenst gedrag)
+        hasChanges = true;
+        batch.delete(doc(db, 'timeRegistrations', existing.id));
+      }
+    }
+
+    if (hasChanges) {
+      try {
+        await batch.commit();
+        alert("Weekregistratie succesvol verwerkt!");
+        await fetchRegistrations(userProfile.uid, isAdmin);
+        setView('list');
+      } catch (err) {
+        alert("Opslaan mislukt.");
+      }
     }
   };
 
@@ -349,7 +395,7 @@ const TimeRegistrations: React.FC = () => {
                     );
                 })}
             </div>
-            <button onClick={handleSaveWeek} className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.01] active:scale-95"><Save size={20} /> Indienen</button>
+            <button onClick={handleSaveWeek} className="w-full bg-[#111827] text-white py-6 rounded-3xl font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 transition-transform hover:scale-[1.01] active:scale-95"><Save size={20} /> Opslaan / Bijwerken</button>
         </div>
       )}
     </div>
