@@ -2,19 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthProvider';
-import { TimeRegistration, Assignment, Client, UserProfile } from '../types';
+import { TimeRegistration, Assignment, Client } from '../types';
 import { FileText, Download, Calendar, User, Building2, TrendingUp, Calculator } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// Importeer het logo zodat het pad tijdens de build wordt opgelost
+import logoImage from '/src/pages.MIJNZORGZUSTER.jpg';
+
 const Reports: React.FC = () => {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [registrations, setRegistrations] = useState<TimeRegistration[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [zzps, setZzps] = useState<any[]>([]); // 'any' voor flexibele naam-velden
+  const [zzps, setZzps] = useState<any[]>([]); 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
 
   // Filters
@@ -26,7 +29,6 @@ const Reports: React.FC = () => {
     fetchData();
   }, [profile]);
 
-  // Helper voor naamweergave conform jouw database (displayName)
   const getUserDisplayName = (user: any) => {
     if (!user) return 'Onbekend';
     return user.displayName || user.email || 'Gebruiker';
@@ -43,7 +45,7 @@ const Reports: React.FC = () => {
 
       const [clientsSnap, zzpsSnap, assignmentsSnap, regsSnap] = await Promise.all([
         getDocs(collection(db, 'clients')),
-        getDocs(collection(db, 'users')), // Haal alle users op voor naam-matching
+        getDocs(collection(db, 'users')),
         getDocs(collection(db, 'assignments')),
         getDocs(regsQuery)
       ]);
@@ -88,7 +90,6 @@ const Reports: React.FC = () => {
   const loadImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous'; // Voorkom CORS problemen bij PDF export
       img.src = url;
       img.onload = () => resolve(img);
       img.onerror = reject;
@@ -98,23 +99,24 @@ const Reports: React.FC = () => {
   const generatePDF = async () => {
     const doc = new jsPDF();
     const monthLabel = format(parseISO(`${selectedMonth}-01`), 'MMMM yyyy', { locale: nl });
-    const logoUrl = 'https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg';
     
     try {
-      const img = await loadImage(logoUrl);
-      doc.addImage(img, 'JPEG', 14, 10, 40, 15);
+      // Gebruik de geïmporteerde logoImage variabele
+      const img = await loadImage(logoImage);
+      // Positie: x=14, y=10 | Grootte: breedte=45, hoogte=auto (15)
+      doc.addImage(img, 'JPEG', 14, 10, 45, 15);
     } catch (e) {
-      console.error("Logo kon niet worden geladen:", e);
+      console.error("Logo kon niet worden geladen uit lokale bron:", e);
     }
 
     doc.setFontSize(22);
     doc.setTextColor(219, 39, 119); 
-    doc.text('Urenrapportage', 14, 35);
+    doc.text('Urenrapportage', 14, 38);
     
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Periode: ${monthLabel}`, 14, 43);
-    doc.text(`Export datum: ${format(new Date(), 'dd-MM-yyyy HH:mm')}`, 14, 48);
+    doc.text(`Periode: ${monthLabel}`, 14, 46);
+    doc.text(`Export datum: ${format(new Date(), 'dd-MM-yyyy HH:mm')}`, 14, 51);
 
     const tableData = filteredRegistrations.map(reg => {
       const assignment = assignments.find(a => a.id === reg.assignmentId);
@@ -126,7 +128,7 @@ const Reports: React.FC = () => {
       
       const row = [
         format(parseISO(reg.date), 'dd-MM-yyyy'),
-        getUserDisplayName(zzpInfo), // Gebruik displayName helper
+        getUserDisplayName(zzpInfo),
         clientInfo?.name || 'Onbekend',
         duration.toFixed(1) + 'u',
       ];
@@ -141,7 +143,7 @@ const Reports: React.FC = () => {
     head.push('Subtotaal');
 
     autoTable(doc, {
-      startY: 55,
+      startY: 58,
       head: [head],
       body: tableData,
       theme: 'striped',
