@@ -7,7 +7,7 @@ import { useAuth } from '../AuthProvider';
 import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react';
 
 // STAP 1: Importeer je logo hier lokaal
-import logo from '../assets/logo.jpg'; 
+import logo from '../pages/MIJNZORGZUSTER.jpg'; 
 
 const Login: React.FC = () => {
   const { user, loading } = useAuth();
