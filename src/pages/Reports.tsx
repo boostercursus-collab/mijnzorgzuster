@@ -84,7 +84,7 @@ const Reports: React.FC = () => {
 
     // Titels
     doc.setFontSize(18);
-    doc.text('Urenrapportage Mijnzorgzuster.nl', 14, 40);
+    doc.text('Urenrapportage Mijnzorgzuster', 14, 40);
     doc.setFontSize(10);
     doc.text(`Periode: ${selectedMonth}`, 14, 48);
     doc.text(`Export datum: ${format(new Date(), 'dd-MM-yyyy HH:mm')}`, 14, 54);
