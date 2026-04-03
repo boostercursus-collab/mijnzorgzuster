@@ -15,7 +15,7 @@ const Reports: React.FC = () => {
   const [registrations, setRegistrations] = useState<TimeRegistration[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [zzps, setZzps] = useState<any[]>([]); 
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
 
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [selectedZzpId, setSelectedZzpId] = useState<string>('all');
@@ -45,7 +45,7 @@ const Reports: React.FC = () => {
 
       setClients(clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
       setZzps(zzpsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
-      setAssignments(assignmentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+      setAssignments(assignmentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setRegistrations(regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRegistration)));
       
       if (!isAdmin) setSelectedZzpId(profile.uid);
@@ -122,14 +122,14 @@ const Reports: React.FC = () => {
     doc.save(`Fee_Rapport_${selectedMonth}.pdf`);
   };
 
-  if (loading) return <div className="p-10 text-center font-bold text-pink-600 tracking-widest uppercase">Laden...</div>;
+  if (loading) return <div className="p-10 text-center font-bold text-pink-600">Laden...</div>;
 
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
       <header className="flex justify-between items-center">
         <div>
           <h1 className="text-4xl font-black uppercase tracking-tight">Rapportage</h1>
-          <p className="text-gray-500 font-medium text-lg">Fee berekening (10%) op basis van uurtarief.</p>
+          <p className="text-gray-500 font-medium">Fee berekening (10%) op basis van uurtarief.</p>
         </div>
         <button 
           onClick={generatePDF} 
@@ -169,32 +169,31 @@ const Reports: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-pink-600 p-8 rounded-[2.5rem] text-white shadow-xl flex items-center justify-between group overflow-hidden relative">
+        <div className="bg-pink-600 p-8 rounded-[2.5rem] text-white shadow-xl flex items-center justify-between overflow-hidden relative">
           <div className="relative z-10">
             <p className="text-[10px] font-black uppercase opacity-80 mb-1">Totaal Uren</p>
             <p className="text-4xl font-black">{totalHours.toFixed(1)}u</p>
           </div>
-          <TrendingUp size={80} className="absolute -right-5 opacity-10 group-hover:scale-110 transition-transform" />
+          <TrendingUp size={80} className="absolute -right-5 opacity-10" />
         </div>
-        <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm flex items-center justify-between group">
+        <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm flex items-center justify-between">
           <div>
             <p className="text-[10px] font-black uppercase text-gray-400 mb-1 tracking-widest">Totaal Fee (10%)</p>
             <p className="text-4xl font-black text-pink-600">€ {totalCommission.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</p>
           </div>
-          <Percent size={48} className="text-pink-600 opacity-10 group-hover:rotate-12 transition-transform" />
+          <Percent size={48} className="text-pink-600 opacity-10" />
         </div>
       </div>
 
       <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
         <div className="px-8 py-6 bg-gray-50/50 border-b flex justify-between items-center">
           <h2 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Preview Fee Data</h2>
-          <span className="bg-pink-100 text-pink-600 text-[10px] font-black px-3 py-1 rounded-full uppercase">Rate Based</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="text-[10px] font-black uppercase text-gray-400">
               <tr>
-                <th className="px-8 py-5 text-center">Datum</th>
+                <th className="px-8 py-5">Datum</th>
                 <th className="px-8 py-5">ZZP'er</th>
                 <th className="px-8 py-5 text-right">Uren</th>
                 <th className="px-8 py-5 text-right">Fee Bedrag</th>
@@ -205,4 +204,23 @@ const Reports: React.FC = () => {
                 const assignment = assignments.find(a => a.id === reg.assignmentId);
                 const zzp = zzps.find(z => z.uid === reg.uid);
                 const rateValue = Number(assignment?.rate) || 0;
-                const lineFee = (Number(reg.duration) * rateValue) * 0.10
+                const lineFee = (Number(reg.duration) * rateValue) * 0.10;
+
+                return (
+                  <tr key={reg.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd-MM-yyyy')}</td>
+                    <td className="px-8 py-5 text-gray-600 font-medium">{getUserDisplayName(zzp)}</td>
+                    <td className="px-8 py-5 text-right font-black">{Number(reg.duration).toFixed(1)}u</td>
+                    <td className="px-8 py-5 text-right font-black text-pink-600">€ {lineFee.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Reports;
