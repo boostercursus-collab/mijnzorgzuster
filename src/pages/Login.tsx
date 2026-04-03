@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth, db, signInWithGoogle } from '../firebase'; // Zorg dat db hier ook is geïmporteerd
+import { auth, db, signInWithGoogle } from '../firebase';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../AuthProvider';
 import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react';
+
+// STAP 1: Importeer je logo hier lokaal
+import logo from '../assets/logo.jpg'; 
 
 const Login: React.FC = () => {
   const { user, loading } = useAuth();
@@ -21,7 +24,6 @@ const Login: React.FC = () => {
     }
   }, [user, navigate]);
 
-  // Centraal systeem om te checken of de user in Firestore staat
   const checkUserExists = async (uid: string) => {
     const userDoc = await getDoc(doc(db, 'users', uid));
     return userDoc.exists();
@@ -33,18 +35,13 @@ const Login: React.FC = () => {
     setLoginLoading(true);
 
     try {
-      // 1. Inloggen bij Firebase Auth
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      
-      // 2. Direct checken of de gebruiker in onze database staat
       const exists = await checkUserExists(userCredential.user.uid);
 
       if (!exists) {
-        // Gebruiker staat niet in Firestore -> Direct uitloggen!
         await signOut(auth);
         setError('Toegang geweigerd. Uw account is niet geactiveerd in dit systeem.');
       } else {
-        // Alles OK, de useEffect zal de navigatie afhandelen
         navigate('/');
       }
     } catch (err: any) {
@@ -84,9 +81,10 @@ const Login: React.FC = () => {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8 font-sans">
       <div className="w-full max-w-md space-y-8 rounded-3xl bg-white p-10 shadow-2xl border border-gray-100">
         <div className="text-center">
+          {/* STAP 2: Gebruik de geïmporteerde variabele in de src */}
           <img
-            className="mx-auto h-20 w-auto rounded-xl"
-            src="https://mijnzorgzuster.nl/wp-content/uploads/2026/03/cropped-MIJNZORGZUSTER-2.jpg"
+            className="mx-auto h-20 w-auto rounded-xl object-contain"
+            src={logo}
             alt="Mijn Zorgzuster"
           />
           <h2 className="mt-6 text-3xl font-black text-gray-900 tracking-tight">
@@ -97,6 +95,7 @@ const Login: React.FC = () => {
           </p>
         </div>
 
+        {/* ... de rest van je formulier blijft hetzelfde ... */}
         <form className="mt-8 space-y-5" onSubmit={handleEmailLogin}>
           <div className="space-y-3">
             <div className="relative">
