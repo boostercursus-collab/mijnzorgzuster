@@ -3,7 +3,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthProvider';
 import { TimeRegistration, Assignment, Client } from '../types';
-import { Download, Calendar, User, Building2, TrendingUp, Calculator } from 'lucide-react';
+import { Download, Calendar, User, Building2, TrendingUp, Calculator, Percent } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -17,14 +17,11 @@ const Reports: React.FC = () => {
   const [zzps, setZzps] = useState<any[]>([]); 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
 
-  // Filters
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [selectedZzpId, setSelectedZzpId] = useState<string>('all');
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
 
-  useEffect(() => {
-    fetchData();
-  }, [profile]);
+  useEffect(() => { fetchData(); }, [profile]);
 
   const getUserDisplayName = (user: any) => user?.displayName || user?.email || 'Onbekend';
 
@@ -50,11 +47,7 @@ const Reports: React.FC = () => {
       setRegistrations(regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRegistration)));
       
       if (!isAdmin) setSelectedZzpId(profile.uid);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { console.error('Error:', error); } finally { setLoading(false); }
   };
 
   const filteredRegistrations = registrations.filter(reg => {
@@ -69,10 +62,14 @@ const Reports: React.FC = () => {
   });
 
   const totalHours = filteredRegistrations.reduce((acc, reg) => acc + (parseFloat(String(reg.duration)) || 0), 0);
-  const totalAmount = filteredRegistrations.reduce((acc, reg) => {
+
+  // BEREKENING: (Uren * Tarief) / 10 (oftewel 10% commissie)
+  const totalCommission = filteredRegistrations.reduce((acc, reg) => {
     const assignment = assignments.find(a => a.id === reg.assignmentId);
-    const rate = parseFloat(String(assignment?.hourlyRate)) || 0;
-    return acc + ((parseFloat(String(reg.duration)) || 0) * rate);
+    const hourlyRate = parseFloat(String(assignment?.hourlyRate)) || 0;
+    const duration = parseFloat(String(reg.duration)) || 0;
+    const lineTotal = duration * hourlyRate;
+    return acc + (lineTotal / 10);
   }, 0);
 
   const loadImage = (url: string): Promise<HTMLImageElement> => {
@@ -91,13 +88,11 @@ const Reports: React.FC = () => {
     try {
       const img = await loadImage(logoUrl);
       doc.addImage(img, 'JPEG', 14, 10, 45, 15);
-    } catch (e) {
-      console.warn("Logo niet gevonden");
-    }
+    } catch (e) { console.warn("Logo niet gevonden"); }
 
     doc.setFontSize(22);
     doc.setTextColor(219, 39, 119); 
-    doc.text('Urenrapportage', 14, 38);
+    doc.text('Commissie Overzicht (10%)', 14, 38);
     
     doc.setFontSize(10);
     doc.setTextColor(100);
@@ -109,38 +104,39 @@ const Reports: React.FC = () => {
       const zzp = zzps.find(z => z.uid === reg.uid);
       const client = clients.find(c => c.id === assignment?.clientId);
       const duration = parseFloat(String(reg.duration)) || 0;
-      const rate = parseFloat(String(assignment?.hourlyRate)) || 0;
+      const hourlyRate = parseFloat(String(assignment?.hourlyRate)) || 0;
+      const commission = (duration * hourlyRate) / 10;
+      
       return [
         format(parseISO(reg.date), 'dd-MM-yyyy'),
         getUserDisplayName(zzp),
         client?.name || 'Onbekend',
         `${duration.toFixed(1)}u`,
-        `€ ${(duration * rate).toFixed(2)}`
+        `€ ${commission.toFixed(2)}`
       ];
     });
 
     autoTable(doc, {
       startY: 58,
-      head: [['Datum', 'ZZP\'er', 'Opdrachtgever', 'Uren', 'Subtotaal']],
+      head: [['Datum', 'ZZP\'er', 'Opdrachtgever', 'Uren', 'Fee (10%)']],
       body: tableData,
       theme: 'striped',
       headStyles: { fillColor: [219, 39, 119] },
-      foot: [['TOTAAL', '', '', `${totalHours.toFixed(1)}u`, `€ ${totalAmount.toFixed(2)}`]],
+      foot: [['TOTAAL COMMISSIE', '', '', `${totalHours.toFixed(1)}u`, `€ ${totalCommission.toFixed(2)}`]],
       footStyles: { fillColor: [243, 244, 246], textColor: [0, 0, 0], fontStyle: 'bold' }
     });
 
-    doc.save(`Rapportage_${selectedMonth}.pdf`);
+    doc.save(`Commissie_Rapport_${selectedMonth}.pdf`);
   };
 
-  if (loading) return <div className="p-20 text-center animate-pulse text-pink-600 font-bold">Laden...</div>;
+  if (loading) return <div className="p-20 text-center animate-pulse text-pink-600 font-bold text-xs tracking-widest uppercase">Laden...</div>;
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-4 py-8">
-      {/* Header */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-4xl font-black text-gray-900 tracking-tight uppercase">Rapportage</h1>
-          <p className="text-gray-500 font-medium text-lg">Overzicht van goedgekeurde uren.</p>
+          <p className="text-gray-500 font-medium text-lg">Fee berekening (10%) op basis van goedgekeurde uren.</p>
         </div>
         <button 
           onClick={generatePDF} 
@@ -148,14 +144,13 @@ const Reports: React.FC = () => {
           className="flex items-center justify-center gap-3 rounded-2xl bg-[#111827] px-8 py-4 text-white font-black hover:bg-black disabled:opacity-30 transition-all shadow-xl uppercase tracking-widest text-xs"
         >
           <Download size={20} />
-          <span>Export PDF</span>
+          <span>Export Fee PDF</span>
         </button>
       </header>
 
-      {/* Filter Sectie */}
+      {/* Filters */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
         <FilterSelect label="Maand" icon={<Calendar size={16}/>} type="month" value={selectedMonth} onChange={setSelectedMonth} />
-        
         {profile?.role === 'admin' && (
           <FilterSelect 
             label="ZZP'er" 
@@ -166,7 +161,6 @@ const Reports: React.FC = () => {
             allowAll 
           />
         )}
-
         <FilterSelect 
           label="Opdrachtgever" 
           icon={<Building2 size={16}/>} 
@@ -177,7 +171,7 @@ const Reports: React.FC = () => {
         />
       </div>
 
-      {/* Statistieken Kaarten */}
+      {/* Statistieken */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-pink-600 p-8 rounded-[2.5rem] text-white shadow-lg flex items-center justify-between group overflow-hidden relative">
           <div className="relative z-10">
@@ -188,17 +182,18 @@ const Reports: React.FC = () => {
         </div>
         <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex items-center justify-between group">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Totaal Bedrag</p>
-            <p className="text-4xl font-black text-gray-900">€ {totalAmount.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Totaal Fee (10%)</p>
+            <p className="text-4xl font-black text-pink-600">€ {totalCommission.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</p>
           </div>
-          <Calculator size={40} className="text-pink-600 opacity-20 group-hover:rotate-12 transition-transform" />
+          <Percent size={40} className="text-pink-600 opacity-20 group-hover:rotate-12 transition-transform" />
         </div>
       </div>
 
       {/* Tabel */}
       <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-8 py-6 border-b border-gray-50 bg-gray-50/30">
-          <h2 className="font-black text-gray-900 uppercase tracking-widest text-[10px]">Preview data</h2>
+        <div className="px-8 py-6 border-b border-gray-50 bg-gray-50/30 flex justify-between items-center">
+          <h2 className="font-black text-gray-900 uppercase tracking-widest text-[10px]">Preview Fee Data</h2>
+          <span className="text-[10px] font-black text-pink-600 bg-pink-50 px-3 py-1 rounded-full uppercase">Fee: 10%</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -207,7 +202,7 @@ const Reports: React.FC = () => {
                 <th className="px-8 py-5">Datum</th>
                 <th className="px-8 py-5">ZZP'er</th>
                 <th className="px-8 py-5 text-right">Uren</th>
-                <th className="px-8 py-5 text-right">Subtotaal</th>
+                <th className="px-8 py-5 text-right">Fee Bedrag</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -215,20 +210,18 @@ const Reports: React.FC = () => {
                 const zzp = zzps.find(z => z.uid === reg.uid);
                 const assignment = assignments.find(a => a.id === reg.assignmentId);
                 const duration = parseFloat(String(reg.duration)) || 0;
-                const total = duration * (parseFloat(String(assignment?.hourlyRate)) || 0);
+                const hourlyRate = parseFloat(String(assignment?.hourlyRate)) || 0;
+                const fee = (duration * hourlyRate) / 10;
 
                 return (
                   <tr key={reg.id} className="hover:bg-gray-50/50">
                     <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
                     <td className="px-8 py-5 text-gray-600 font-medium">{getUserDisplayName(zzp)}</td>
                     <td className="px-8 py-5 text-right font-black">{duration.toFixed(1)}u</td>
-                    <td className="px-8 py-5 text-right font-black text-pink-600">€ {total.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-8 py-5 text-right font-black text-pink-600">€ {fee.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
                   </tr>
                 );
               })}
-              {filteredRegistrations.length === 0 && (
-                <tr><td colSpan={4} className="px-8 py-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">Geen data gevonden voor deze selectie.</td></tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -237,7 +230,6 @@ const Reports: React.FC = () => {
   );
 };
 
-// Filter component
 const FilterSelect = ({ label, icon, value, onChange, options = [], type = "select", allowAll = false }: any) => (
   <div className="space-y-2">
     <label className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">
