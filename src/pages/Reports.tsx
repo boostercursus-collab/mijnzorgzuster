@@ -17,11 +17,14 @@ const Reports: React.FC = () => {
   const [zzps, setZzps] = useState<any[]>([]); 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
 
+  // Filters
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [selectedZzpId, setSelectedZzpId] = useState<string>('all');
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
 
-  useEffect(() => { fetchData(); }, [profile]);
+  useEffect(() => {
+    fetchData();
+  }, [profile]);
 
   const getUserDisplayName = (user: any) => user?.displayName || user?.email || 'Onbekend';
 
@@ -47,10 +50,10 @@ const Reports: React.FC = () => {
       setRegistrations(regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRegistration)));
       
       if (!isAdmin) setSelectedZzpId(profile.uid);
-    } catch (error) { 
-      console.error('Error fetching data:', error); 
-    } finally { 
-      setLoading(false); 
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -88,8 +91,8 @@ const Reports: React.FC = () => {
     try {
       const img = await loadImage(logoUrl);
       doc.addImage(img, 'JPEG', 14, 10, 45, 15);
-    } catch (e) { 
-        console.warn("Logo niet gevonden in public map"); 
+    } catch (e) {
+      console.warn("Logo niet gevonden");
     }
 
     doc.setFontSize(22);
@@ -107,13 +110,12 @@ const Reports: React.FC = () => {
       const client = clients.find(c => c.id === assignment?.clientId);
       const duration = parseFloat(String(reg.duration)) || 0;
       const rate = parseFloat(String(assignment?.hourlyRate)) || 0;
-      const total = duration * rate;
       return [
-          format(parseISO(reg.date), 'dd-MM-yyyy'), 
-          getUserDisplayName(zzp), 
-          client?.name || 'Onbekend', 
-          `${duration.toFixed(1)}u`, 
-          `€ ${total.toFixed(2)}` 
+        format(parseISO(reg.date), 'dd-MM-yyyy'),
+        getUserDisplayName(zzp),
+        client?.name || 'Onbekend',
+        `${duration.toFixed(1)}u`,
+        `€ ${(duration * rate).toFixed(2)}`
       ];
     });
 
@@ -130,10 +132,11 @@ const Reports: React.FC = () => {
     doc.save(`Rapportage_${selectedMonth}.pdf`);
   };
 
-  if (loading) return <div className="p-20 text-center animate-pulse text-pink-600 font-bold">Rapportage laden...</div>;
+  if (loading) return <div className="p-20 text-center animate-pulse text-pink-600 font-bold">Laden...</div>;
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-4 py-8">
+      {/* Header */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-4xl font-black text-gray-900 tracking-tight uppercase">Rapportage</h1>
@@ -149,7 +152,7 @@ const Reports: React.FC = () => {
         </button>
       </header>
 
-      {/* Filters */}
+      {/* Filter Sectie */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
         <FilterSelect label="Maand" icon={<Calendar size={16}/>} type="month" value={selectedMonth} onChange={setSelectedMonth} />
         
@@ -174,7 +177,7 @@ const Reports: React.FC = () => {
         />
       </div>
 
-      {/* Statistieken */}
+      {/* Statistieken Kaarten */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-pink-600 p-8 rounded-[2.5rem] text-white shadow-lg flex items-center justify-between group overflow-hidden relative">
           <div className="relative z-10">
@@ -192,7 +195,7 @@ const Reports: React.FC = () => {
         </div>
       </div>
 
-      {/* Preview Tabel */}
+      {/* Tabel */}
       <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-8 py-6 border-b border-gray-50 bg-gray-50/30">
           <h2 className="font-black text-gray-900 uppercase tracking-widest text-[10px]">Preview data</h2>
@@ -234,7 +237,7 @@ const Reports: React.FC = () => {
   );
 };
 
-// Helper Component voor filters
+// Filter component
 const FilterSelect = ({ label, icon, value, onChange, options = [], type = "select", allowAll = false }: any) => (
   <div className="space-y-2">
     <label className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2">
