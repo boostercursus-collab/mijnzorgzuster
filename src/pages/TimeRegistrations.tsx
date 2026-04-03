@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, getDoc, writeBatch, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { TimeRegistration, Assignment } from '../types';
-import { Calendar, List, Save, ChevronLeft, ChevronRight, CheckCircle, User, CheckCheck } from 'lucide-react';
+import { Calendar, List, Save, ChevronLeft, ChevronRight, CheckCircle, User, CheckCheck, Edit2, Trash2, X, Check } from 'lucide-react';
 import { format, startOfWeek, addDays, parseISO, subWeeks, addWeeks } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
@@ -15,6 +15,10 @@ const TimeRegistrations: React.FC = () => {
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // States voor bewerken
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [tempDuration, setTempDuration] = useState<string>('');
 
   const [selectedZzpUid, setSelectedZzpUid] = useState('');
   const [filterZzpUid, setFilterZzpUid] = useState('all');
@@ -89,6 +93,8 @@ const TimeRegistrations: React.FC = () => {
     return () => unsubscribe();
   }, [fetchInitialData]);
 
+  // --- ADMIN ACTIES ---
+
   const handleApprove = async (regId: string) => {
     try {
       await updateDoc(doc(db, 'timeRegistrations', regId), { status: 'approved' });
@@ -98,7 +104,32 @@ const TimeRegistrations: React.FC = () => {
     }
   };
 
-  // NIEUWE FUNCTIE: Alles in één keer accorderen
+  const handleUpdateDuration = async (regId: string) => {
+    const newDuration = parseFloat(tempDuration);
+    if (isNaN(newDuration) || newDuration < 0) return alert("Voer een geldig getal in.");
+
+    try {
+      await updateDoc(doc(db, 'timeRegistrations', regId), { 
+        duration: newDuration,
+        updatedAt: serverTimestamp() 
+      });
+      setRegistrations(prev => prev.map(r => r.id === regId ? { ...r, duration: newDuration } : r));
+      setEditingId(null);
+    } catch (err) {
+      alert("Wijzigen mislukt.");
+    }
+  };
+
+  const handleDeleteRegistration = async (regId: string) => {
+    if (!window.confirm("Weet je zeker dat je deze urenregistratie wilt verwijderen?")) return;
+    try {
+      await deleteDoc(doc(db, 'timeRegistrations', regId));
+      setRegistrations(prev => prev.filter(r => r.id !== regId));
+    } catch (err) {
+      alert("Verwijderen mislukt.");
+    }
+  };
+
   const handleApproveAll = async () => {
     const toApprove = filteredRegistrations.filter(r => r.status !== 'approved');
     if (toApprove.length === 0) return;
@@ -113,13 +144,10 @@ const TimeRegistrations: React.FC = () => {
       });
 
       await batch.commit();
-      
-      // Update lokale state
       setRegistrations(prev => prev.map(r => {
         const wasFiltered = toApprove.find(ta => ta.id === r.id);
         return wasFiltered ? { ...r, status: 'approved' } : r;
       }));
-      
       alert("Alles is succesvol geaccordeerd!");
     } catch (err) {
       console.error(err);
@@ -159,8 +187,6 @@ const TimeRegistrations: React.FC = () => {
 
   const filteredRegistrations = registrations.filter(r => filterZzpUid === 'all' || r.uid === filterZzpUid);
   const getZzpDisplayName = (uid: string) => allUsers.find(u => u.uid === uid)?.displayName || 'ZZP-er';
-  
-  // Check of er items zijn om goed te keuren
   const hasPendingItems = filteredRegistrations.some(r => r.status !== 'approved');
 
   if (loading) return <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest text-sm">Registraties laden...</div>;
@@ -200,7 +226,6 @@ const TimeRegistrations: React.FC = () => {
                 </select>
               </div>
 
-              {/* De nieuwe Accorderen-knop */}
               {hasPendingItems && (
                 <button 
                   onClick={handleApproveAll}
@@ -221,7 +246,7 @@ const TimeRegistrations: React.FC = () => {
                   {isAdmin && <th className="px-8 py-6">ZZP-er</th>}
                   <th className="px-8 py-6 text-right">Uren</th>
                   <th className="px-8 py-6 text-center">Status</th>
-                  {isAdmin && <th className="px-8 py-6 text-center">Actie</th>}
+                  {isAdmin && <th className="px-8 py-6 text-center">Acties</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -229,17 +254,58 @@ const TimeRegistrations: React.FC = () => {
                   <tr key={reg.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'eee d MMM yyyy', { locale: nl })}</td>
                     {isAdmin && <td className="px-8 py-5 font-medium text-pink-600">{getZzpDisplayName(reg.uid)}</td>}
-                    <td className="px-8 py-5 text-right font-black text-gray-900">{reg.duration}u</td>
+                    
+                    <td className="px-8 py-5 text-right font-black text-gray-900">
+                      {editingId === reg.id ? (
+                        <input 
+                          type="number" 
+                          step="0.5"
+                          className="w-20 p-2 bg-gray-100 rounded-lg text-right outline-none focus:ring-2 ring-pink-500"
+                          value={tempDuration}
+                          onChange={(e) => setTempDuration(e.target.value)}
+                          autoFocus
+                        />
+                      ) : (
+                        `${reg.duration}u`
+                      )}
+                    </td>
+
                     <td className="px-8 py-5 text-center">
                       <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase ${reg.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
                         {reg.status === 'approved' ? 'Akkoord' : 'In afwachting'}
                       </span>
                     </td>
+
                     {isAdmin && (
-                      <td className="px-8 py-5 text-center">
-                        {reg.status !== 'approved' && (
-                          <button onClick={() => handleApprove(reg.id)} className="text-green-600 hover:text-green-700 transition-colors"><CheckCircle size={22} /></button>
-                        )}
+                      <td className="px-8 py-5">
+                        <div className="flex items-center justify-center gap-3">
+                          {editingId === reg.id ? (
+                            <>
+                              <button onClick={() => handleUpdateDuration(reg.id)} className="text-green-600 hover:scale-110 transition-transform"><Check size={20}/></button>
+                              <button onClick={() => setEditingId(null)} className="text-gray-400 hover:scale-110 transition-transform"><X size={20}/></button>
+                            </>
+                          ) : (
+                            <>
+                              {reg.status !== 'approved' && (
+                                <button onClick={() => handleApprove(reg.id)} title="Accorderen" className="text-green-600 hover:scale-110 transition-transform"><CheckCircle size={20} /></button>
+                              )}
+                              <button 
+                                onClick={() => { setEditingId(reg.id); setTempDuration(reg.duration.toString()); }} 
+                                title="Wijzigen"
+                                className="text-blue-500 hover:scale-110 transition-transform"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteRegistration(reg.id)} 
+                                title="Verwijderen"
+                                className="text-red-400 hover:scale-110 transition-transform"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
