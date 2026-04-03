@@ -10,7 +10,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // Importeer het logo zodat het pad tijdens de build wordt opgelost
-import logoImage from '/src/pages.MIJNZORGZUSTER.jpg';
+import logoImage from '/src/pages/MIJNZORGZUSTER.jpg';
 
 const Reports: React.FC = () => {
   const { profile } = useAuth();
