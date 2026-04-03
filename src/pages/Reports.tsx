@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthProvider';
-import { TimeRegistration, Assignment, Client } from '../types';
-import { Download, Calendar, User, Building2, TrendingUp, Percent } from 'lucide-react';
+import { TimeRegistration, Client } from '../types';
+import { Download, Calendar, User, TrendingUp, Percent } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -45,7 +45,8 @@ const Reports: React.FC = () => {
 
       setClients(clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
       setZzps(zzpsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
-      setAssignments(assignmentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      // Cruciaal: We slaan de assignments op met hun Firestore ID
+      setAssignments(assignmentsSnap.docs.map(doc => ({ id: String(doc.id), ...doc.data() })));
       setRegistrations(regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRegistration)));
       
       if (!isAdmin) setSelectedZzpId(profile.uid);
@@ -61,109 +62,69 @@ const Reports: React.FC = () => {
     const monthStart = startOfMonth(parseISO(`${selectedMonth}-01`));
     const monthEnd = endOfMonth(monthStart);
     const matchesMonth = isWithinInterval(regDate, { start: monthStart, end: monthEnd });
-    const matchesZzp = selectedZzpId === 'all' || reg.uid === selectedZzpId;
-    const assignment = assignments.find(a => a.id === reg.assignmentId);
-    const matchesClient = selectedClientId === 'all' || (assignment && assignment.clientId === selectedClientId);
+    const matchesZzp = selectedZzpId === 'all' || String(reg.uid) === String(selectedZzpId);
+    
+    const assignment = assignments.find(a => String(a.id) === String(reg.assignmentId));
+    const matchesClient = selectedClientId === 'all' || (assignment && String(assignment.clientId) === String(selectedClientId));
+    
     return matchesMonth && matchesZzp && matchesClient;
   });
 
-  const totalHours = filteredRegistrations.reduce((acc, reg) => acc + (Number(reg.duration) || 0), 0);
-
-  const totalCommission = filteredRegistrations.reduce((acc, reg) => {
-    const assignment = assignments.find(a => a.id === reg.assignmentId);
+  // Hulpmiddel om fee per registratie te berekenen
+  const calculateFee = (reg: TimeRegistration) => {
+    const assignment = assignments.find(a => String(a.id) === String(reg.assignmentId));
     const rateValue = Number(assignment?.rate) || 0;
     const duration = Number(reg.duration) || 0;
-    return acc + ((duration * rateValue) * 0.10);
-  }, 0);
+    return (duration * rateValue) * 0.10;
+  };
+
+  const totalHours = filteredRegistrations.reduce((acc, reg) => acc + (Number(reg.duration) || 0), 0);
+  const totalCommission = filteredRegistrations.reduce((acc, reg) => acc + calculateFee(reg), 0);
 
   const generatePDF = async () => {
     const doc = new jsPDF();
-    const logoUrl = '/MIJNZORGZUSTER.jpg';
-    
-    try {
-      const img = new Image();
-      img.src = logoUrl;
-      doc.addImage(img, 'JPEG', 14, 10, 45, 15);
-    } catch (e) { 
-      console.warn("Logo niet geladen"); 
-    }
-
-    doc.setFontSize(20);
-    doc.setTextColor(219, 39, 119); 
-    doc.text('Fee Overzicht (10%)', 14, 35);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Periode: ${selectedMonth}`, 14, 42);
-
     const tableBody = filteredRegistrations.map(reg => {
-      const assignment = assignments.find(a => a.id === reg.assignmentId);
-      const zzp = zzps.find(z => z.uid === reg.uid);
-      const rateValue = Number(assignment?.rate) || 0;
-      const fee = (Number(reg.duration) * rateValue) * 0.10;
-
+      const zzp = zzps.find(z => String(z.uid) === String(reg.uid));
       return [
         format(parseISO(reg.date), 'dd-MM-yyyy'),
         getUserDisplayName(zzp),
-        `${reg.duration}u`,
-        `€ ${fee.toFixed(2)}`
+        `${Number(reg.duration).toFixed(1)}u`,
+        `€ ${calculateFee(reg).toFixed(2)}`
       ];
     });
 
     autoTable(doc, {
-      startY: 50,
+      startY: 20,
       head: [['Datum', 'ZZP\'er', 'Uren', 'Fee (10%)']],
       body: tableBody,
       foot: [['TOTAAL', '', `${totalHours.toFixed(1)}u`, `€ ${totalCommission.toFixed(2)}`]],
-      headStyles: { fillColor: [219, 39, 119] },
-      theme: 'striped'
+      headStyles: { fillColor: [219, 39, 119] }
     });
 
     doc.save(`Fee_Rapport_${selectedMonth}.pdf`);
   };
 
-  if (loading) return <div className="p-10 text-center font-bold text-pink-600">Laden...</div>;
+  if (loading) return <div className="p-10 text-center font-bold text-pink-600">Data ophalen...</div>;
 
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
       <header className="flex justify-between items-center">
-        <div>
-          <h1 className="text-4xl font-black uppercase tracking-tight">Rapportage</h1>
-          <p className="text-gray-500 font-medium">Fee berekening (10%) op basis van uurtarief.</p>
-        </div>
-        <button 
-          onClick={generatePDF} 
-          className="bg-[#111827] text-white px-8 py-4 rounded-2xl flex gap-2 text-xs font-black uppercase shadow-xl hover:bg-black transition-all"
-        >
+        <h1 className="text-4xl font-black uppercase">Rapportage</h1>
+        <button onClick={generatePDF} className="bg-black text-white px-8 py-4 rounded-2xl flex gap-2 text-xs font-black uppercase shadow-xl hover:opacity-80 transition-all">
           <Download size={18} /> Export Fee PDF
         </button>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-8 rounded-[2.5rem] border shadow-sm">
         <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2 flex items-center gap-2">
-            <Calendar size={14}/> Maand
-          </label>
-          <input 
-            type="month" 
-            className="w-full p-5 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-pink-600" 
-            value={selectedMonth} 
-            onChange={(e) => setSelectedMonth(e.target.value)} 
-          />
+          <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2 flex items-center gap-2"><Calendar size={14}/> Maand</label>
+          <input type="month" className="w-full p-5 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-pink-600" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2 flex items-center gap-2">
-            <User size={14}/> ZZP'er
-          </label>
-          <select 
-            className="w-full p-5 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-pink-600" 
-            value={selectedZzpId} 
-            onChange={(e) => setSelectedZzpId(e.target.value)}
-          >
+          <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2 flex items-center gap-2"><User size={14}/> ZZP'er</label>
+          <select className="w-full p-5 bg-gray-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-pink-600" value={selectedZzpId} onChange={(e) => setSelectedZzpId(e.target.value)}>
             <option value="all">Alle ZZP'ers</option>
-            {zzps.filter(z => z.role === 'zzp').map(z => (
-              <option key={z.uid} value={z.uid}>{getUserDisplayName(z)}</option>
-            ))}
+            {zzps.filter(z => z.role === 'zzp').map(z => (<option key={z.uid} value={z.uid}>{getUserDisplayName(z)}</option>))}
           </select>
         </div>
       </div>
@@ -186,38 +147,31 @@ const Reports: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
-        <div className="px-8 py-6 bg-gray-50/50 border-b flex justify-between items-center">
-          <h2 className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Preview Fee Data</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="text-[10px] font-black uppercase text-gray-400">
-              <tr>
-                <th className="px-8 py-5">Datum</th>
-                <th className="px-8 py-5">ZZP'er</th>
-                <th className="px-8 py-5 text-right">Uren</th>
-                <th className="px-8 py-5 text-right">Fee Bedrag</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {filteredRegistrations.map(reg => {
-                const assignment = assignments.find(a => a.id === reg.assignmentId);
-                const zzp = zzps.find(z => z.uid === reg.uid);
-                const rateValue = Number(assignment?.rate) || 0;
-                const lineFee = (Number(reg.duration) * rateValue) * 0.10;
+        <table className="w-full text-left">
+          <thead className="text-[10px] font-black uppercase text-gray-400 border-b">
+            <tr>
+              <th className="px-8 py-5">Datum</th>
+              <th className="px-8 py-5">ZZP'er</th>
+              <th className="px-8 py-5 text-right">Uren</th>
+              <th className="px-8 py-5 text-right">Fee Bedrag</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {filteredRegistrations.map(reg => {
+              const zzp = zzps.find(z => String(z.uid) === String(reg.uid));
+              const fee = calculateFee(reg);
 
-                return (
-                  <tr key={reg.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd-MM-yyyy')}</td>
-                    <td className="px-8 py-5 text-gray-600 font-medium">{getUserDisplayName(zzp)}</td>
-                    <td className="px-8 py-5 text-right font-black">{Number(reg.duration).toFixed(1)}u</td>
-                    <td className="px-8 py-5 text-right font-black text-pink-600">€ {lineFee.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+              return (
+                <tr key={reg.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-8 py-5 font-bold text-gray-700">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
+                  <td className="px-8 py-5 text-gray-600 font-medium">{getUserDisplayName(zzp)}</td>
+                  <td className="px-8 py-5 text-right font-black">{Number(reg.duration).toFixed(1)}u</td>
+                  <td className="px-8 py-5 text-right font-black text-pink-600">€ {fee.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
