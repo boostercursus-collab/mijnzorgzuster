@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './AuthProvider';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
 import Assignments from './pages/Assignments';
@@ -30,8 +31,9 @@ export default function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Publieke route */}
+          {/* Publieke routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           
           {/* Beveiligde routes binnen de Layout */}
           <Route
