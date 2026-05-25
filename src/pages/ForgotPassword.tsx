@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { Mail, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import logo from '../pages/MIJNZORGZUSTER.jpg';
 
@@ -20,26 +20,44 @@ const ForgotPassword: React.FC = () => {
     setLoading(true);
 
     try {
-      // Stap 1: Controleer of de gebruiker bestaat in Firestore
-      const usersRef = doc(db, 'users', '');
-      
-      // We moeten de gebruiker zoeken op basis van email
-      // In Firestore moeten we een query doen, dus we gebruiken een workaround
-      // Controleer eerst of het e-mailadres geldig is
+      // Controleer of het e-mailadres geldig is
       if (!email || !email.includes('@')) {
         setError('Voer een geldig e-mailadres in.');
         setLoading(false);
         return;
       }
 
-      // Stap 2: Probeer een reset-email te sturen via Firebase Auth
-      // Als de gebruiker niet bestaat, geeft Firebase geen error terug (security)
-      // We sturen de email en tonen een succes-bericht
-      
+      // Stap 1: Zoek in de users collection naar een gebruiker met dit e-mailadres EN role 'zzp'
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('email', '==', email.toLowerCase()));
+      const querySnapshot = await getDocs(q);
+
+      let userFound = false;
+      let isZZP = false;
+
+      querySnapshot.forEach((docSnapshot) => {
+        const userData = docSnapshot.data();
+        userFound = true;
+        isZZP = userData.role === 'zzp';
+      });
+
+      // Stap 2: Als gebruiker niet bestaat of niet ZZP is, toon error
+      if (!userFound) {
+        setError('Dit e-mailadres is niet geregistreerd in het systeem.');
+        setLoading(false);
+        return;
+      }
+
+      if (!isZZP) {
+        setError('Alleen ZZP gebruikers kunnen hun wachtwoord resetten via deze pagina.');
+        setLoading(false);
+        return;
+      }
+
+      // Stap 3: Stuur password reset email
       await sendPasswordResetEmail(auth, email);
-      
-      // Toon succesmelding - dit werkt voor bestaande en niet-bestaande accounts
-      // (ter wille van veiligheid, zoals Firebase aanbeveling)
+
+      // Toon succesmelding
       setSuccess(true);
       setEmail('');
 
@@ -49,8 +67,12 @@ const ForgotPassword: React.FC = () => {
       }, 5000);
     } catch (err: any) {
       console.error('Password reset error:', err);
-      // Toon generieke fout (niet onthullen of account bestaat)
-      setError('Er is een fout opgetreden. Probeer het later opnieuw.');
+      
+      if (err.code === 'permission-denied') {
+        setError('U hebt geen toestemming voor deze actie.');
+      } else {
+        setError('Er is een fout opgetreden. Probeer het later opnieuw.');
+      }
     } finally {
       setLoading(false);
     }
