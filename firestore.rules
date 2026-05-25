@@ -1,163 +1,59 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Document ID: auth.uid
-    // Fields:
-    //   - uid: string (required) - Auth UID
-    //   - firstName: string (required)
-    //   - lastName: string (required)
-    //   - email: string (required, email format)
-    //   - phone: string (optional)
-    //   - role: string (required, 'zzp' | 'admin')
-    //
-    // Collection: clients
-    // Document ID: auto-generated
-    // Fields:
-    //   - name: string (required)
-    //   - address: string (optional)
-    //   - contactPerson: string (optional)
-    //   - email: string (required, email format)
-    //
-    // Collection: assignments
-    // Document ID: auto-generated
-    // Fields:
-    //   - clientId: string (required) - Reference to clients collection
-    //   - zzpId: string (required) - Reference to users collection
-    //   - title: string (required)
-    //   - description: string (optional)
-    //   - startDate: string (required, date format)
-    //   - endDate: string (optional, date format)
-    //   - hourlyRate: number (optional)
-    //
-    // Collection: timeRegistrations
-    // Document ID: auto-generated
-    // Fields:
-    //   - assignmentId: string (required)
-    //   - zzpId: string (required)
-    //   - date: string (required, date format)
-    //   - startTime: string (required, time format)
-    //   - endTime: string (required, time format)
-    //   - breakMinutes: number (required)
-    //   - description: string (optional)
-    //   - status: string (required, 'draft' | 'submitted' | 'approved' | 'rejected')
-    //   - totalHours: number (required)
-    //   - submittedAt: string (optional, date-time format)
-    //   - approvedAt: string (optional, date-time format)
-    //   - rejectionReason: string (optional)
-    //
-    // ===============================================================
 
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    
+    // Helper: Is de gebruiker ingelogd?
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
+    // Helper: Is de gebruiker een admin?
+    // We checken e-mail OF de rol in het document
     function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "boostercursus@gmail.com" && request.auth.token.email_verified == true));
+      return isAuthenticated() && (
+        request.auth.token.email == "abdelbouda@gmail.com" || 
+        request.auth.token.email == "info@mijnzorgzuster.nl" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
     }
 
+    // Helper: Is de gebruiker een ZZP?
     function isZZP() {
       return isAuthenticated() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'zzp';
     }
 
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    function isValidDate(dateStr) {
-      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}$");
-    }
-
-    function isValidDateTime(dateTimeStr) {
-      return dateTimeStr is string && dateTimeStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
-    }
-
-    // ===============================================================
-    // Validation Functions
-    // ===============================================================
-
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'firstName', 'lastName', 'email', 'role']) &&
-             data.uid is string && data.uid.size() > 0 &&
-             data.firstName is string && data.firstName.size() > 0 && data.firstName.size() < 100 &&
-             data.lastName is string && data.lastName.size() > 0 && data.lastName.size() < 100 &&
-             isValidEmail(data.email) &&
-             data.role in ['zzp', 'admin'];
-    }
-
-    function isValidClient(data) {
-      return data.keys().hasAll(['name', 'email']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
-             isValidEmail(data.email);
-    }
-
-    function isValidAssignment(data) {
-      return data.keys().hasAll(['clientId', 'zzpId', 'title', 'startDate']) &&
-             data.clientId is string && data.zzpId is string &&
-             data.title is string && data.title.size() > 0 &&
-             isValidDate(data.startDate);
-    }
-
-    function isValidTimeRegistration(data) {
-      return data.keys().hasAll(['assignmentId', 'zzpId', 'date', 'status', 'totalHours']) &&
-             data.assignmentId is string && data.zzpId is string &&
-             isValidDate(data.date) &&
-             data.status in ['draft', 'submitted', 'approved', 'rejected'] &&
-             data.totalHours is number;
-    }
-
-    // ===============================================================
-    // Match Rules
-    // ===============================================================
-
-    // Users collection - with query support for password reset
-    match /users/{userId} {
-      // Lezen: iedereen die ingelogd is mag gebruikers lezen (nodig voor password reset queries)
-      allow read: if isAuthenticated();
-      
-      // Aanmaken: eigenaar kan zzp aanmaken, admin mag alles
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'zzp' || isAdmin());
-      
-      // Bijwerken: eigenaar mag eigen gegevens bijwerken (behalve rol), admin mag alles
-      // ZZP gebruikers mogen hun eigen wachtwoord resetten (via Firebase Auth)
-      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
-    }
-
+    // NIEUW: Klanten (Clients) regels
     match /clients/{clientId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAdmin() && isValidClient(request.resource.data);
-      allow delete: if isAdmin();
+      // Admins mogen alles, ZZP'ers mogen namen van klanten zien om uren te schrijven
+      allow read: if isAuthenticated(); 
+      allow write: if isAdmin();
     }
 
+    // Opdrachten (Assignments) regels
     match /assignments/{assignmentId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAdmin() && isValidAssignment(request.resource.data);
-      allow delete: if isAdmin();
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow write: if isAdmin();
     }
 
-    match /timeRegistrations/{regId} {
-      allow read: if isAuthenticated() && (isOwner(resource.data.zzpId) || isAdmin());
-      allow create: if isAuthenticated() && (isOwner(request.resource.data.zzpId) || isAdmin()) && isValidTimeRegistration(request.resource.data);
-      allow update: if isAuthenticated() && (
-        (isOwner(resource.data.zzpId) && resource.data.status in ['draft', 'rejected'] && isValidTimeRegistration(request.resource.data) && request.resource.data.status in ['draft', 'submitted']) ||
-        (isAdmin() && isValidTimeRegistration(request.resource.data))
-      );
-      allow delete: if isAuthenticated() && (isOwner(resource.data.zzpId) || isAdmin()) && (resource.data.status == 'draft' || isAdmin());
+    // Urenregistraties regels
+    match /timeRegistrations/{id} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid && resource.data.status != 'approved');
+    }
+
+    // Gebruikersprofielen - met query support voor password reset
+    match /users/{userId} {
+      // Belangrijk: we staan 'list' toe voor admins zodat de dropdown gevuld kan worden
+      // Ook nodig voor ZZP'ers die hun wachtwoord willen resetten (query op email)
+      allow list: if isAdmin() || isZZP();
+      
+      // Get: jezelf of admin mag je profiel zien
+      allow get: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      
+      // Write: alleen admins mogen wijzigingen maken
+      allow write: if isAdmin();
     }
   }
 }
