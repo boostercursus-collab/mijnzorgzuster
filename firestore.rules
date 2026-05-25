@@ -125,33 +125,31 @@ service cloud.firestore {
     // Match Rules
     // ===============================================================
 
-    // Users collection - with password reset query support
+    // Users collection - with query support for password reset
     match /users/{userId} {
-      // Lezen: iedereen die ingelogd is mag gebruikers lezen
+      // Lezen: iedereen die ingelogd is mag gebruikers lezen (nodig voor password reset queries)
       allow read: if isAuthenticated();
       
       // Aanmaken: eigenaar kan zzp aanmaken, admin mag alles
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'zzp' || isAdmin());
       
       // Bijwerken: eigenaar mag eigen gegevens bijwerken (behalve rol), admin mag alles
+      // ZZP gebruikers mogen hun eigen wachtwoord resetten (via Firebase Auth)
       allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
     }
 
-    // Clients collection
     match /clients/{clientId} {
       allow read: if isAuthenticated();
       allow create, update: if isAdmin() && isValidClient(request.resource.data);
       allow delete: if isAdmin();
     }
 
-    // Assignments collection
     match /assignments/{assignmentId} {
       allow read: if isAuthenticated();
       allow create, update: if isAdmin() && isValidAssignment(request.resource.data);
       allow delete: if isAdmin();
     }
 
-    // TimeRegistrations collection
     match /timeRegistrations/{regId} {
       allow read: if isAuthenticated() && (isOwner(resource.data.zzpId) || isAdmin());
       allow create: if isAuthenticated() && (isOwner(request.resource.data.zzpId) || isAdmin()) && isValidTimeRegistration(request.resource.data);
@@ -160,15 +158,6 @@ service cloud.firestore {
         (isAdmin() && isValidTimeRegistration(request.resource.data))
       );
       allow delete: if isAuthenticated() && (isOwner(resource.data.zzpId) || isAdmin()) && (resource.data.status == 'draft' || isAdmin());
-    }
-
-    // Query voor wachtwoord reset - query users op email
-    // Dit is reeds ondersteund door de read/query rules hierboven
-    // Maar we kunnen extra restrictief zijn door een aparte collection aan te maken
-    match /passwordResetLog/{document=**} {
-      // Deze logs zijn alleen voor admin inzicht (optioneel)
-      allow read: if isAdmin();
-      allow write: if false; // Alleen backend mag schrijven
     }
   }
 }
