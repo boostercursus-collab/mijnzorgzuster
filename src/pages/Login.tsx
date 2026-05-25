@@ -122,6 +122,17 @@ const Login: React.FC = () => {
             </div>
           </div>
 
+          {/* "Wachtwoord vergeten" link */}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => navigate('/forgot-password')}
+              className="text-xs text-pink-600 hover:text-pink-700 font-semibold transition-colors"
+            >
+              Wachtwoord vergeten?
+            </button>
+          </div>
+
           {error && (
             <div className="flex items-center gap-2 rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-600 border border-red-100 animate-shake">
               <AlertCircle className="h-5 w-5 shrink-0" />
