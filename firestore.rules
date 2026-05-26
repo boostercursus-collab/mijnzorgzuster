@@ -43,10 +43,10 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid && resource.data.status != 'approved');
     }
 
-    // Gebruikersprofielen - met query support voor password reset
+    // Gebruikersprofielen - enkel voor geauthenticeerde gebruikers
+    // Password reset gaat via server-side API endpoint (/api/resetPassword)
     match /users/{userId} {
-      // Belangrijk: we staan 'list' toe voor admins zodat de dropdown gevuld kan worden
-      // Ook nodig voor ZZP'ers die hun wachtwoord willen resetten (query op email)
+      // List query: alleen voor admins en ingelogde ZZP'ers (voor dropdown)
       allow list: if isAdmin() || isZZP();
       
       // Get: jezelf of admin mag je profiel zien
