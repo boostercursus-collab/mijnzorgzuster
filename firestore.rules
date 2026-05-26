@@ -8,7 +8,6 @@ service cloud.firestore {
     }
 
     // Helper: Is de gebruiker een admin?
-    // We checken e-mail OF de rol in het document
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.email == "abdelbouda@gmail.com" || 
@@ -23,9 +22,8 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'zzp';
     }
 
-    // NIEUW: Klanten (Clients) regels
+    // Klanten (Clients) regels
     match /clients/{clientId} {
-      // Admins mogen alles, ZZP'ers mogen namen van klanten zien om uren te schrijven
       allow read: if isAuthenticated(); 
       allow write: if isAdmin();
     }
@@ -45,8 +43,8 @@ service cloud.firestore {
 
     // Gebruikersprofielen - met query support voor password reset
     match /users/{userId} {
-      // Belangrijk: we staan 'list' toe voor admins zodat de dropdown gevuld kan worden
-      // Ook nodig voor ZZP'ers die hun wachtwoord willen resetten (query op email)
+      // ZZP'ers mogen list/query gebruiken voor wachtwoord reset (aligned met resetPassword.ts backend)
+      // Admins mogen ook lezen voor user management
       allow list: if isAdmin() || isZZP();
       
       // Get: jezelf of admin mag je profiel zien
