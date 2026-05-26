@@ -1,8 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth, db } from '../firebase';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { Mail, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import logo from '../pages/MIJNZORGZUSTER.jpg';
 
@@ -27,35 +24,21 @@ const ForgotPassword: React.FC = () => {
         return;
       }
 
-      // Stap 1: Zoek in de users collection naar een gebruiker met dit e-mailadres EN role 'zzp'
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', email.toLowerCase()));
-      const querySnapshot = await getDocs(q);
-
-      let userFound = false;
-      let isZZP = false;
-
-      querySnapshot.forEach((docSnapshot) => {
-        const userData = docSnapshot.data();
-        userFound = true;
-        isZZP = userData.role === 'zzp';
+      // Roep Cloud Function aan in plaats van direct Firestore te queryen
+      // Dit is veiliger omdat de server de gebruiker verifieert
+      const response = await fetch('/api/resetPassword', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.toLowerCase() })
       });
 
-      // Stap 2: Als gebruiker niet bestaat of niet ZZP is, toon error
-      if (!userFound) {
-        setError('Dit e-mailadres is niet geregistreerd in het systeem.');
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Er is een fout opgetreden.');
         setLoading(false);
         return;
       }
-
-      if (!isZZP) {
-        setError('Alleen ZZP gebruikers kunnen hun wachtwoord resetten via deze pagina.');
-        setLoading(false);
-        return;
-      }
-
-      // Stap 3: Stuur password reset email
-      await sendPasswordResetEmail(auth, email);
 
       // Toon succesmelding
       setSuccess(true);
@@ -67,12 +50,7 @@ const ForgotPassword: React.FC = () => {
       }, 5000);
     } catch (err: any) {
       console.error('Password reset error:', err);
-      
-      if (err.code === 'permission-denied') {
-        setError('U hebt geen toestemming voor deze actie.');
-      } else {
-        setError('Er is een fout opgetreden. Probeer het later opnieuw.');
-      }
+      setError('Er is een fout opgetreden. Probeer het later opnieuw.');
     } finally {
       setLoading(false);
     }
