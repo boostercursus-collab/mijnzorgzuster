@@ -12,12 +12,13 @@ import {
   Menu,
   X,
   FileText,
-  ShieldCheck // Nieuwe icoon voor beheer
+  ShieldCheck,
+  UserCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const Layout: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, role, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -29,10 +30,18 @@ const Layout: React.FC = () => {
     navigate('/login');
   };
 
+  // Debug: check role in console
+  React.useEffect(() => {
+    console.log('[Layout] Huidige role:', role, 'Profile:', profile?.email);
+  }, [role, profile]);
+
+  // Menu items - paden aangepast naar JOUW routes
   const menuItems = [
+    // Iedereen
     { name: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['admin', 'zzp'] },
     { name: 'Urenregistratie', path: '/uren', icon: Clock, roles: ['admin', 'zzp'] },
-    // Admin Only secties
+    
+    // Alleen admin (paden volgens jouw routes)
     { name: 'Gebruikersbeheer', path: '/admin', icon: ShieldCheck, roles: ['admin'] },
     { name: 'Opdrachtgevers', path: '/opdrachtgevers', icon: Building2, roles: ['admin'] },
     { name: 'Opdrachten', path: '/opdrachten', icon: Briefcase, roles: ['admin'] },
@@ -40,7 +49,44 @@ const Layout: React.FC = () => {
     { name: 'Rapportage', path: '/rapportage', icon: FileText, roles: ['admin'] },
   ];
 
-  const filteredMenu = menuItems.filter(item => item.roles.includes(profile?.role || ''));
+  // Filter menu op basis van role
+  const filteredMenu = menuItems.filter(item => {
+    if (!role) return false;
+    return item.roles.includes(role);
+  });
+
+  // Als role nog geladen wordt, toon loading state
+  if (!role && profile === undefined) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Bezig met laden...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Als role null is (geen toegang), toon alleen logout optie
+  if (!role) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="bg-white p-8 rounded-lg shadow-md text-center max-w-md">
+          <ShieldCheck className="h-16 w-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Geen Toegang</h2>
+          <p className="text-gray-600 mb-6">
+            Je hebt geen geldige rol toegewezen. Neem contact op met een beheerder.
+          </p>
+          <button
+            onClick={handleLogout}
+            className="bg-pink-600 text-white px-6 py-2 rounded-lg hover:bg-pink-700 transition-colors"
+          >
+            Uitloggen
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -51,8 +97,22 @@ const Layout: React.FC = () => {
             src={logoUrl} 
             alt="Mijn Zorgzuster" 
             className="h-12 object-contain"
+            onError={(e) => {
+              console.error('Logo failed to load');
+              e.currentTarget.style.display = 'none';
+            }}
           />
         </div>
+        
+        {/* Role indicator */}
+        <div className="px-4 py-2 border-b bg-gray-50">
+          <div className="text-xs text-gray-500">Ingelogd als:</div>
+          <div className="font-semibold text-sm capitalize">
+            {role === 'admin' ? '👑 Beheerder' : '💼 ZZP\'er'}
+          </div>
+          <div className="text-xs text-gray-500 truncate">{profile?.email}</div>
+        </div>
+        
         <nav className="flex-1 space-y-1 p-4">
           {filteredMenu.map((item) => (
             <Link
@@ -70,6 +130,7 @@ const Layout: React.FC = () => {
             </Link>
           ))}
         </nav>
+        
         <div className="border-t p-4">
           <button
             onClick={handleLogout}
@@ -88,7 +149,11 @@ const Layout: React.FC = () => {
             src={logoUrl} 
             alt="Mijn Zorgzuster" 
             className="h-8 object-contain"
+            onError={(e) => e.currentTarget.style.display = 'none'}
           />
+          <div className="text-sm text-gray-600 mr-2">
+            {role === 'admin' ? 'Admin' : 'ZZP'}
+          </div>
           <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
             {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
@@ -102,11 +167,20 @@ const Layout: React.FC = () => {
                 src={logoUrl} 
                 alt="Mijn Zorgzuster" 
                 className="h-8 object-contain"
+                onError={(e) => e.currentTarget.style.display = 'none'}
               />
               <button onClick={() => setIsMobileMenuOpen(false)}>
                 <X className="h-6 w-6" />
               </button>
             </div>
+            
+            <div className="px-4 py-2 border-b bg-gray-50">
+              <div className="text-sm font-semibold capitalize">
+                {role === 'admin' ? '👑 Beheerder' : '💼 ZZP\'er'}
+              </div>
+              <div className="text-xs text-gray-500 truncate">{profile?.email}</div>
+            </div>
+            
             <nav className="space-y-1 p-4">
               {filteredMenu.map((item) => (
                 <Link

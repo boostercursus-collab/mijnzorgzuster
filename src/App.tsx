@@ -11,10 +11,11 @@ import Assignments from './pages/Assignments';
 import ZZPs from './pages/ZZPs';
 import TimeRegistrations from './pages/TimeRegistrations';
 import Reports from './pages/Reports';
-import AdminPanel from './pages/AdminPanel'; // Importeer je nieuwe beheerpagina
+import AdminPanel from './pages/AdminPanel';
 
+// Verbeterde ProtectedRoute met role-check (gebruikt nu de 'role' uit AuthProvider)
 const ProtectedRoute = ({ children, adminOnly = false }: { children: React.ReactNode, adminOnly?: boolean }) => {
-  const { user, profile, loading } = useAuth();
+  const { user, role, loading } = useAuth(); // Gebruik 'role' ipv 'profile?.role'
 
   if (loading) return <div className="flex h-screen items-center justify-center font-medium text-pink-600">Laden...</div>;
   
@@ -22,7 +23,7 @@ const ProtectedRoute = ({ children, adminOnly = false }: { children: React.React
   if (!user) return <Navigate to="/login" />;
   
   // Wel ingelogd, maar geen admin op een admin-only pagina? Naar dashboard
-  if (adminOnly && profile?.role !== 'admin') return <Navigate to="/" />;
+  if (adminOnly && role !== 'admin') return <Navigate to="/" />;
 
   return <>{children}</>;
 };
