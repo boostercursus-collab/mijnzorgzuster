@@ -4,11 +4,10 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserProfile, UserRole, AuthContextType } from './types';
 
-// Lijst van hardcoded admin emails (als backup / eerste setup)
+// ALLEEN deze emails zijn hardcoded admin (boostercursus@gmail.com is verwijderd!)
 const HARDCODED_ADMINS = [
   'abdelbouda@gmail.com',
-  'imane-bouda@hotmail.com',
-  'boostercursus@gmail.com'
+  'imane-bouda@hotmail.com'
 ];
 
 // Maak de context aan met default values
@@ -39,29 +38,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userEmail = firebaseUser.email || '';
         const isHardcodedAdmin = HARDCODED_ADMINS.includes(userEmail);
 
-        // Bepaal de role (prioriteit: Firestore > hardcoded admin)
+        // Bepaal de role (prioriteit: hardcoded admin > Firestore)
         let userRole: UserRole | null = null;
         let userProfile: UserProfile | null = null;
 
-        if (userDoc.exists()) {
-          // Gebruiker bestaat in Firestore
-          userProfile = userDoc.data() as UserProfile;
-          userRole = userProfile.role === 'admin' ? 'admin' : 'zzp';
-          console.log(`[AuthProvider] ${userEmail} heeft role: ${userRole} (uit Firestore)`);
-        } 
-        
-        // Backup: hardcoded admin overschrijft Firestore role
-        if (isHardcodedAdmin && userRole !== 'admin') {
-          console.warn(`[AuthProvider] ${userEmail} staat in hardcoded admin lijst, role wordt admin`);
+        // EERST checken of het een hardcoded admin is
+        if (isHardcodedAdmin) {
           userRole = 'admin';
+          console.log(`[AuthProvider] ${userEmail} is hardcoded admin`);
           
-          if (userProfile) {
-            // Update bestaand Firestore document
-            await setDoc(userRef, { ...userProfile, role: 'admin' }, { merge: true });
-            userProfile.role = 'admin';
+          // Haal of maak Firestore document
+          if (userDoc.exists()) {
+            userProfile = userDoc.data() as UserProfile;
+            // Zorg dat role in Firestore ook admin is
+            if (userProfile.role !== 'admin') {
+              await setDoc(userRef, { ...userProfile, role: 'admin' }, { merge: true });
+              userProfile.role = 'admin';
+            }
           } else {
             // Maak nieuw admin profiel aan
-            const newAdminProfile: UserProfile = {
+            userProfile = {
               uid: firebaseUser.uid,
               firstName: 'Admin',
               lastName: 'Gebruiker',
@@ -71,9 +67,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             };
-            await setDoc(userRef, newAdminProfile);
-            userProfile = newAdminProfile;
+            await setDoc(userRef, userProfile);
           }
+        } 
+        // Geen hardcoded admin -> check Firestore
+        else if (userDoc.exists()) {
+          userProfile = userDoc.data() as UserProfile;
+          userRole = userProfile.role === 'admin' ? 'admin' : 'zzp';
+          console.log(`[AuthProvider] ${userEmail} heeft role: ${userRole} (uit Firestore)`);
         }
         
         // Toegang verlenen of weigeren
