@@ -9,8 +9,7 @@ import { nl } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// Logo als base64 (tijdelijke placeholder - vervang met jouw logo)
-const LOGO_BASE64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwBEAAD/2Q==';
+// Geen logo import meer nodig - gebruik /MIJNZORGZUSTER.jpg uit public folder
 
 const Reports: React.FC = () => {
   const { profile } = useAuth();
@@ -75,7 +74,6 @@ const Reports: React.FC = () => {
     return matchesMonth && matchesZzp && matchesClient;
   });
 
-  // GECORRIGEERDE REGEL 78 - de reduce functie
   const totalHours = filteredRegistrations.reduce((acc, reg) => acc + (Number(reg.duration || reg.totalHours || 0)), 0);
   const totalFeeInternal = filteredRegistrations.reduce((acc, reg) => acc + getFeeData(reg, 0.10).fee, 0);
 
@@ -90,6 +88,23 @@ const Reports: React.FC = () => {
     doc.setTextColor(0, 0, 0);
   };
 
+  // Functie om logo toe te voegen aan PDF
+  const addLogoToPDF = (doc: jsPDF, x: number, y: number, width: number, height: number) => {
+    try {
+      // Gebruik het logo uit de public folder
+      const imgData = '/MIJNZORGZUSTER.jpg';
+      doc.addImage(imgData, 'JPEG', x, y, width, height);
+    } catch (error) {
+      console.error('Logo kon niet worden geladen:', error);
+      // Fallback tekst
+      doc.setFontSize(12);
+      doc.setTextColor(219, 39, 119);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Mijn Zorgzuster', x, y + 10);
+      doc.setTextColor(0, 0, 0);
+    }
+  };
+
   const generateInvoice = () => {
     const doc = new jsPDF();
     const selectedClient = clients.find(c => c.id === selectedClientId);
@@ -97,13 +112,8 @@ const Reports: React.FC = () => {
     
     const invoiceNumber = `${format(new Date(), 'yyyyMM')}-${Math.floor(1000 + Math.random() * 9000)}`;
     
-    // Gebruik base64 logo of tekst als fallback
-    try {
-      doc.addImage(LOGO_BASE64, 'JPEG', 14, 10, 35, 22);
-    } catch {
-      doc.setFontSize(12);
-      doc.text('Mijn Zorgzuster', 14, 20);
-    }
+    // Logo toevoegen uit public folder
+    addLogoToPDF(doc, 14, 10, 35, 22);
     
     doc.setFontSize(20);
     doc.setTextColor(219, 39, 119);
@@ -190,12 +200,8 @@ const Reports: React.FC = () => {
   const generatePDF = () => {
     const doc = new jsPDF();
     
-    try {
-      doc.addImage(LOGO_BASE64, 'JPEG', 14, 10, 30, 20);
-    } catch {
-      doc.setFontSize(12);
-      doc.text('Mijn Zorgzuster', 14, 18);
-    }
+    // Logo toevoegen uit public folder
+    addLogoToPDF(doc, 14, 10, 30, 20);
     
     doc.setFontSize(18);
     doc.text('Urenrapportage Mijnzorgzuster.nl', 14, 40);
