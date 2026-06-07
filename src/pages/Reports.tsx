@@ -9,8 +9,6 @@ import { nl } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// Geen logo import meer nodig - gebruik /MIJNZORGZUSTER.jpg uit public folder
-
 const Reports: React.FC = () => {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -77,7 +75,6 @@ const Reports: React.FC = () => {
   const totalHours = filteredRegistrations.reduce((acc, reg) => acc + (Number(reg.duration || reg.totalHours || 0)), 0);
   const totalFeeInternal = filteredRegistrations.reduce((acc, reg) => acc + getFeeData(reg, 0.10).fee, 0);
 
-  // Helper functie om bedrijfsgegevens toe te voegen aan PDF
   const addCompanyDetails = (doc: jsPDF, startY: number) => {
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
@@ -88,15 +85,12 @@ const Reports: React.FC = () => {
     doc.setTextColor(0, 0, 0);
   };
 
-  // Functie om logo toe te voegen aan PDF
   const addLogoToPDF = (doc: jsPDF, x: number, y: number, width: number, height: number) => {
     try {
-      // Gebruik het logo uit de public folder
       const imgData = '/MIJNZORGZUSTER.jpg';
       doc.addImage(imgData, 'JPEG', x, y, width, height);
     } catch (error) {
       console.error('Logo kon niet worden geladen:', error);
-      // Fallback tekst
       doc.setFontSize(12);
       doc.setTextColor(219, 39, 119);
       doc.setFont('helvetica', 'bold');
@@ -112,7 +106,6 @@ const Reports: React.FC = () => {
     
     const invoiceNumber = `${format(new Date(), 'yyyyMM')}-${Math.floor(1000 + Math.random() * 9000)}`;
     
-    // Logo toevoegen uit public folder
     addLogoToPDF(doc, 14, 10, 35, 22);
     
     doc.setFontSize(20);
@@ -153,7 +146,7 @@ const Reports: React.FC = () => {
         format(parseISO(reg.date), 'dd-MM-yyyy'),
         `Bemiddelingsfee uren: ${zzp?.displayName || 'ZZP'} @ ${clientName}`,
         `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`,
-        `€ ${fee.toFixed(2)}`
+        { content: `€ ${fee.toFixed(2)}`, styles: { halign: 'right' } }
       ];
     });
 
@@ -161,8 +154,14 @@ const Reports: React.FC = () => {
       startY: 95,
       head: [['Datum', 'Omschrijving', 'Uren', 'Bedrag']],
       body: invoiceRows,
-      headStyles: { fillColor: [31, 41, 55] },
-      columnStyles: { 3: { halign: 'right' } }
+      headStyles: { fillColor: [31, 41, 55], halign: 'left' },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 100 },
+        2: { cellWidth: 25, halign: 'right' },
+        3: { cellWidth: 35, halign: 'right' }
+      },
+      margin: { left: 14, right: 14 }
     });
 
     const finalY = (doc as any).lastAutoTable.finalY + 10;
@@ -183,16 +182,27 @@ const Reports: React.FC = () => {
     doc.setTextColor(80, 80, 80);
     
     const paymentY = finalY + 35;
-    doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken`, 14, paymentY);
-    doc.text(`onder vermelding van factuurnummer ${invoiceNumber} naar rekeningnummer:`, 14, paymentY + 6);
-    doc.setFont('helvetica', 'bold');
-    doc.text('NL20 SNSB 8838 9987 95', 14, paymentY + 12);
-    doc.setFont('helvetica', 'normal');
-    doc.text('ten name van I. Bouda', 14, paymentY + 18);
     
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Bedankt voor uw vertrouwen in Mijn Zorgzuster.', 14, paymentY + 35);
+    // Regel 1
+    doc.text('Gelieve het totaalbedrag van ', 14, paymentY);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`€ ${totaalbedrag.toFixed(2)}`, 14 + doc.getTextWidth('Gelieve het totaalbedrag van '), paymentY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(' binnen 14 dagen over te maken onder vermelding van factuurnummer ', 14 + doc.getTextWidth('Gelieve het totaalbedrag van € XX.XX '), paymentY);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${invoiceNumber}`, 14 + doc.getTextWidth('Gelieve het totaalbedrag van € XX.XX binnen 14 dagen over te maken onder vermelding van factuurnummer '), paymentY);
+    
+    // Regel 2
+    doc.setFont('helvetica', 'normal');
+    doc.text(' naar rekeningnummer ', 14, paymentY + 7);
+    doc.setFont('helvetica', 'bold');
+    doc.text('NL20 SNSB 8838 9987 95', 14 + doc.getTextWidth(' naar rekeningnummer '), paymentY + 7);
+    
+    // Regel 3
+    doc.setFont('helvetica', 'normal');
+    doc.text(' ten name van ', 14, paymentY + 14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('I. Bouda', 14 + doc.getTextWidth(' ten name van '), paymentY + 14);
 
     doc.save(`Factuur_Mijnzorgzuster_${selectedMonth}.pdf`);
   };
@@ -200,7 +210,6 @@ const Reports: React.FC = () => {
   const generatePDF = () => {
     const doc = new jsPDF();
     
-    // Logo toevoegen uit public folder
     addLogoToPDF(doc, 14, 10, 30, 20);
     
     doc.setFontSize(18);
@@ -215,8 +224,8 @@ const Reports: React.FC = () => {
         format(parseISO(reg.date), 'dd-MM-yyyy'), 
         zzp?.displayName || 'Onbekend', 
         clientName, 
-        `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`, 
-        `€ ${fee.toFixed(2)}`
+        { content: `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`, styles: { halign: 'right' } },
+        { content: `€ ${fee.toFixed(2)}`, styles: { halign: 'right' } }
       ];
     });
     
@@ -224,7 +233,14 @@ const Reports: React.FC = () => {
       startY: 60,
       head: [['Datum', 'ZZP\'er', 'Opdrachtgever', 'Uren', 'Fee (5%)']],
       body: tableData,
-      headStyles: { fillColor: [219, 39, 119] }
+      headStyles: { fillColor: [219, 39, 119] },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 60 },
+        3: { cellWidth: 25, halign: 'right' },
+        4: { cellWidth: 35, halign: 'right' }
+      }
     });
     
     doc.save(`Urenrapportage_${selectedMonth}.pdf`);
@@ -251,7 +267,6 @@ const Reports: React.FC = () => {
         </div>
       </header>
 
-      {/* Filters */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-8 rounded-[2.5rem] border shadow-sm">
         <div className="space-y-2">
           <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest ml-2 flex items-center gap-2"><Calendar size={14}/> Periode</label>
@@ -273,7 +288,6 @@ const Reports: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-pink-600 p-8 rounded-[2.5rem] text-white shadow-xl flex items-center justify-between">
           <div><p className="text-[10px] font-black uppercase opacity-80">Totaal Uren</p><p className="text-4xl font-black">{totalHours.toFixed(1)}u</p></div>
@@ -285,7 +299,6 @@ const Reports: React.FC = () => {
         </div>
       </div>
 
-      {/* Preview Table */}
       <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
         <div className="px-8 py-5 bg-gray-50 border-b flex justify-between items-center">
            <h2 className="text-[10px] font-black uppercase text-gray-400">Preview goedgekeurde uren</h2>
