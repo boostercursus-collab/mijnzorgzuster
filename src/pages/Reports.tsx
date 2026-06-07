@@ -2,21 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../AuthProvider';
-import { TimeRegistration, Client } from '../types';
+import { TimeRegistration, Client, UserProfile, Assignment } from '../types';
 import { Download, Calendar, User, Building2, TrendingUp, Percent, FileText } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import logo from '../pages/MIJNZORGZUSTER.jpg';
+
+// Logo als base64 (tijdelijke placeholder - vervang met jouw logo)
+const LOGO_BASE64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwBEAAD/2Q==';
 
 const Reports: React.FC = () => {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [registrations, setRegistrations] = useState<TimeRegistration[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [zzps, setZzps] = useState<any[]>([]); 
-  const [assignments, setAssignments] = useState<any[]>([]);
+  const [zzps, setZzps] = useState<UserProfile[]>([]); 
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
 
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [selectedZzpId, setSelectedZzpId] = useState<string>('all');
@@ -41,8 +43,8 @@ const Reports: React.FC = () => {
       ]);
 
       setClients(clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
-      setZzps(zzpsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
-      setAssignments(assignmentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setZzps(zzpsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
+      setAssignments(assignmentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Assignment)));
       setRegistrations(regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeRegistration)));
       
       if (!isAdmin) setSelectedZzpId(profile.uid);
@@ -55,8 +57,8 @@ const Reports: React.FC = () => {
 
   const getFeeData = (reg: TimeRegistration, percentage: number = 0.10) => {
     const assignment = assignments.find(a => String(a.id) === String(reg.assignmentId));
-    const rate = assignment ? Number(assignment.rate) : 0;
-    const hours = Number(reg.duration) || 0;
+    const rate = assignment ? Number(assignment.rate || assignment.hourlyRate || 0) : 0;
+    const hours = Number(reg.duration || reg.totalHours || 0);
     const fee = (hours * rate) * percentage;
     const client = clients.find(c => c.id === assignment?.clientId);
     return { rate, hours, fee, assignment, clientName: client?.name || 'Onbekend' };
@@ -73,15 +75,35 @@ const Reports: React.FC = () => {
     return matchesMonth && matchesZzp && matchesClient;
   });
 
-  const totalHours = filteredRegistrations.reduce((acc, reg) => acc + (Number(reg.duration) || 0), 0);
+  // GECORRIGEERDE REGEL 78 - de reduce functie
+  const totalHours = filteredRegistrations.reduce((acc, reg) => acc + (Number(reg.duration || reg.totalHours || 0)), 0);
   const totalFeeInternal = filteredRegistrations.reduce((acc, reg) => acc + getFeeData(reg, 0.10).fee, 0);
+
+  // Helper functie om bedrijfsgegevens toe te voegen aan PDF
+  const addCompanyDetails = (doc: jsPDF, startY: number) => {
+    doc.setFontSize(9);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont('helvetica', 'normal');
+    doc.text('KvK 85123498', 14, startY);
+    doc.text('Btw-nummer NL004054584B23', 14, startY + 5);
+    doc.text('Bank NL20 SNSB 8838 9987 95', 14, startY + 10);
+    doc.setTextColor(0, 0, 0);
+  };
 
   const generateInvoice = () => {
     const doc = new jsPDF();
     const selectedClient = clients.find(c => c.id === selectedClientId);
     const selectedZzp = zzps.find(z => z.uid === selectedZzpId);
     
-    doc.addImage(logo, 'JPEG', 14, 10, 35, 22);
+    const invoiceNumber = `${format(new Date(), 'yyyyMM')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    
+    // Gebruik base64 logo of tekst als fallback
+    try {
+      doc.addImage(LOGO_BASE64, 'JPEG', 14, 10, 35, 22);
+    } catch {
+      doc.setFontSize(12);
+      doc.text('Mijn Zorgzuster', 14, 20);
+    }
     
     doc.setFontSize(20);
     doc.setTextColor(219, 39, 119);
@@ -89,27 +111,27 @@ const Reports: React.FC = () => {
     
     doc.setFontSize(10);
     doc.setTextColor(0);
-    doc.text(`Factuurnummer: ${format(new Date(), 'yyyyMM')}-${Math.floor(1000 + Math.random() * 9000)}`, 140, 28);
+    doc.text(`Factuurnummer: ${invoiceNumber}`, 140, 28);
     doc.text(`Datum: ${format(new Date(), 'dd-MM-yyyy')}`, 140, 33);
 
-    // Afzender
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('Mijnzorgzuster.nl', 14, 45);
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.text('Administratie@mijnzorgzuster.nl', 14, 50);
+    
+    addCompanyDetails(doc, 56);
 
-    // Ontvanger (ZZP of Opdrachtgever)
-    doc.setFont(undefined, 'bold');
-    doc.text('Factuur aan:', 14, 65);
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'bold');
+    doc.text('Factuur aan:', 14, 75);
+    doc.setFont('helvetica', 'normal');
     if (selectedZzpId !== 'all' && selectedZzp) {
-      doc.text(selectedZzp.displayName || selectedZzp.email, 14, 70);
-      doc.text('ZZP Dienstverlener', 14, 75);
+      doc.text(selectedZzp.displayName || selectedZzp.email, 14, 80);
+      doc.text('ZZP Dienstverlener', 14, 85);
     } else if (selectedClientId !== 'all' && selectedClient) {
-      doc.text(selectedClient.name, 14, 70);
-      doc.text(selectedClient.email || '', 14, 75);
+      doc.text(selectedClient.name, 14, 80);
+      doc.text(selectedClient.email || '', 14, 85);
     } else {
-      doc.text('Verzamel-factuur', 14, 70);
+      doc.text('Verzamel-factuur', 14, 80);
     }
 
     let subtotal = 0;
@@ -120,13 +142,13 @@ const Reports: React.FC = () => {
       return [
         format(parseISO(reg.date), 'dd-MM-yyyy'),
         `Bemiddelingsfee uren: ${zzp?.displayName || 'ZZP'} @ ${clientName}`,
-        `${Number(reg.duration).toFixed(1)}u`,
+        `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`,
         `€ ${fee.toFixed(2)}`
       ];
     });
 
     autoTable(doc, {
-      startY: 85,
+      startY: 95,
       head: [['Datum', 'Omschrijving', 'Uren', 'Bedrag']],
       body: invoiceRows,
       headStyles: { fillColor: [31, 41, 55] },
@@ -135,39 +157,80 @@ const Reports: React.FC = () => {
 
     const finalY = (doc as any).lastAutoTable.finalY + 10;
     const btw = subtotal * 0.21;
+    const totaalbedrag = subtotal + btw;
+    
     doc.text('Subtotaal:', 140, finalY);
     doc.text(`€ ${subtotal.toFixed(2)}`, 190, finalY, { align: 'right' });
     doc.text('BTW (21%):', 140, finalY + 7);
     doc.text(`€ ${btw.toFixed(2)}`, 190, finalY + 7, { align: 'right' });
-    doc.setFont(undefined, 'bold');
-    doc.text('Totaal te betalen:', 140, finalY + 15);
-    doc.text(`€ ${(subtotal + btw).toFixed(2)}`, 190, finalY + 15, { align: 'right' });
+    
+    doc.setFont('helvetica', 'bold');
+    doc.text('Totaalbedrag:', 140, finalY + 18);
+    doc.text(`€ ${totaalbedrag.toFixed(2)}`, 190, finalY + 18, { align: 'right' });
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    
+    const paymentY = finalY + 35;
+    doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken`, 14, paymentY);
+    doc.text(`onder vermelding van factuurnummer ${invoiceNumber} naar rekeningnummer:`, 14, paymentY + 6);
+    doc.setFont('helvetica', 'bold');
+    doc.text('NL20 SNSB 8838 9987 95', 14, paymentY + 12);
+    doc.setFont('helvetica', 'normal');
+    doc.text('ten name van I. Bouda', 14, paymentY + 18);
+    
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Bedankt voor uw vertrouwen in Mijn Zorgzuster.', 14, paymentY + 35);
 
     doc.save(`Factuur_Mijnzorgzuster_${selectedMonth}.pdf`);
   };
 
   const generatePDF = () => {
     const doc = new jsPDF();
-    doc.addImage(logo, 'JPEG', 14, 10, 30, 20);
+    
+    try {
+      doc.addImage(LOGO_BASE64, 'JPEG', 14, 10, 30, 20);
+    } catch {
+      doc.setFontSize(12);
+      doc.text('Mijn Zorgzuster', 14, 18);
+    }
+    
     doc.setFontSize(18);
     doc.text('Urenrapportage Mijnzorgzuster.nl', 14, 40);
+    
+    addCompanyDetails(doc, 47);
+    
     const tableData = filteredRegistrations.map(reg => {
       const { fee, clientName } = getFeeData(reg, 0.05);
       const zzp = zzps.find(z => z.uid === reg.uid);
-      return [format(parseISO(reg.date), 'dd-MM-yyyy'), zzp?.displayName || 'Onbekend', clientName, `${Number(reg.duration).toFixed(1)}u`, `€ ${fee.toFixed(2)}` ];
+      return [
+        format(parseISO(reg.date), 'dd-MM-yyyy'), 
+        zzp?.displayName || 'Onbekend', 
+        clientName, 
+        `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`, 
+        `€ ${fee.toFixed(2)}`
+      ];
     });
+    
     autoTable(doc, {
-      startY: 55,
+      startY: 60,
       head: [['Datum', 'ZZP\'er', 'Opdrachtgever', 'Uren', 'Fee (5%)']],
       body: tableData,
       headStyles: { fillColor: [219, 39, 119] }
     });
+    
     doc.save(`Urenrapportage_${selectedMonth}.pdf`);
   };
 
+  if (loading) {
+    return <div className="p-20 text-center font-black text-pink-600 animate-pulse uppercase tracking-widest text-sm">Gegevens laden...</div>;
+  }
+
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto font-sans">
-      <header className="flex justify-between items-center">
+      <header className="flex justify-between items-center flex-wrap gap-4">
         <div>
           <h1 className="text-4xl font-black uppercase tracking-tight">Rapportage</h1>
           <p className="text-gray-500 font-medium italic">Financieel overzicht & Facturatie</p>
@@ -222,32 +285,34 @@ const Reports: React.FC = () => {
            <h2 className="text-[10px] font-black uppercase text-gray-400">Preview goedgekeurde uren</h2>
            <span className="text-[10px] font-bold text-pink-600">Alleen status: Akkoord</span>
         </div>
-        <table className="w-full text-left">
-          <thead className="text-[10px] font-black uppercase text-gray-400 border-b">
-            <tr>
-              <th className="px-8 py-4">Datum</th>
-              <th className="px-8 py-4">ZZP'er</th>
-              <th className="px-8 py-4">Opdrachtgever</th>
-              <th className="px-8 py-4 text-right">Uren</th>
-              <th className="px-8 py-4 text-right">Marge (10%)</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {filteredRegistrations.map(reg => {
-              const { fee, clientName } = getFeeData(reg, 0.10);
-              const zzp = zzps.find(z => z.uid === reg.uid);
-              return (
-                <tr key={reg.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-8 py-4 font-bold">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
-                  <td className="px-8 py-4 text-gray-600">{zzp?.displayName || zzp?.email}</td>
-                  <td className="px-8 py-4 text-gray-600">{clientName}</td>
-                  <td className="px-8 py-4 text-right font-black">{Number(reg.duration).toFixed(1)}u</td>
-                  <td className="px-8 py-4 text-right font-black text-pink-600">€ {fee.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left min-w-[800px]">
+            <thead className="text-[10px] font-black uppercase text-gray-400 border-b">
+              <tr>
+                <th className="px-8 py-4">Datum</th>
+                <th className="px-8 py-4">ZZP'er</th>
+                <th className="px-8 py-4">Opdrachtgever</th>
+                <th className="px-8 py-4 text-right">Uren</th>
+                <th className="px-8 py-4 text-right">Marge (10%)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filteredRegistrations.map(reg => {
+                const { fee, clientName } = getFeeData(reg, 0.10);
+                const zzp = zzps.find(z => z.uid === reg.uid);
+                return (
+                  <tr key={reg.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-8 py-4 font-bold">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
+                    <td className="px-8 py-4 text-gray-600">{zzp?.displayName || zzp?.email}</td>
+                    <td className="px-8 py-4 text-gray-600">{clientName}</td>
+                    <td className="px-8 py-4 text-right font-black">{Number(reg.duration || reg.totalHours || 0).toFixed(1)}u</td>
+                    <td className="px-8 py-4 text-right font-black text-pink-600">€ {fee.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

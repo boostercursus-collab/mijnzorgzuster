@@ -19,9 +19,9 @@ export interface UserProfile {
   email: string;
   phone?: string;
   role: UserRole;
-  displayName?: string; // Optioneel: handig voor weergave in lijsten
-  createdAt?: string;   // Optioneel: voor auditing
-  updatedAt?: string;   // Optioneel: voor auditing
+  displayName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // Helper: volledige naam van een gebruiker
@@ -36,7 +36,7 @@ export interface Client {
   address?: string;
   contactPerson?: string;
   email: string;
-  phone?: string;       // Toegevoegd: telefoonnummer klant
+  phone?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -45,13 +45,14 @@ export interface Client {
 export interface Assignment {
   id: string;
   clientId: string;
-  uid: string; // ID van de ZZP'er (was zzpId)
+  uid: string;
   title: string;
   description?: string;
-  startDate: string;    // Format: YYYY-MM-DD
-  endDate?: string;     // Format: YYYY-MM-DD
+  startDate: string;
+  endDate?: string;
   hourlyRate?: number;
-  status?: 'active' | 'completed' | 'cancelled'; // Toegevoegd: status van opdracht
+  rate?: number;         // Alias voor hourlyRate
+  status?: 'active' | 'completed' | 'cancelled';
   createdAt?: string;
   updatedAt?: string;
 }
@@ -71,27 +72,30 @@ export type RegistrationStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 export interface TimeRegistration {
   id: string;
   assignmentId: string;
-  uid: string; // ID van de ZZP'er (was zzpId)
-  date: string;          // Format: YYYY-MM-DD
-  startTime: string;     // Format: HH:mm
-  endTime: string;       // Format: HH:mm
-  breakMinutes: number;
+  uid: string;
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  breakMinutes?: number;
   description?: string;
   status: RegistrationStatus;
-  totalHours: number;    // Berekend: (endTime - startTime - breakMinutes) in uren
+  duration?: number;
+  totalHours: number;
   submittedAt?: string;
   approvedAt?: string;
   rejectionReason?: string;
-  createdAt?: string;    // Handig voor sortering
+  createdAt?: string;
   updatedAt?: string;
 }
 
 // Helper: bereken totale uren (als fallback)
 export const calculateTotalHours = (
-  startTime: string, 
-  endTime: string, 
-  breakMinutes: number
+  startTime?: string, 
+  endTime?: string, 
+  breakMinutes: number = 0
 ): number => {
+  if (!startTime || !endTime) return 0;
+  
   const [startHour, startMin] = startTime.split(':').map(Number);
   const [endHour, endMin] = endTime.split(':').map(Number);
   
@@ -112,7 +116,12 @@ export const isApproved = (registration: TimeRegistration): boolean => {
   return registration.status === 'approved';
 };
 
-// ==================== Auth Context Type (voor consistente typing) ====================
+// Helper: haal uren op (duration of totalHours)
+export const getRegistrationHours = (registration: TimeRegistration): number => {
+  return registration.duration ?? registration.totalHours ?? 0;
+};
+
+// ==================== Auth Context Type ====================
 export interface AuthContextType {
   user: import('firebase/auth').User | null;
   profile: UserProfile | null;
@@ -136,6 +145,6 @@ export interface TimeRegistrationFilter {
   startDate?: string;
   endDate?: string;
   status?: RegistrationStatus | 'all';
-  uid?: string;        // Voor admin: filter op specifieke ZZP'er
+  uid?: string;
   assignmentId?: string;
 }
