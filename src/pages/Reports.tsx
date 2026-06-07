@@ -138,28 +138,30 @@ const Reports: React.FC = () => {
     }
 
     let subtotal = 0;
-    const invoiceRows = filteredRegistrations.map(reg => {
+    const invoiceRows: any[][] = [];
+    
+    for (const reg of filteredRegistrations) {
       const { fee, clientName } = getFeeData(reg, 0.05);
       subtotal += fee;
       const zzp = zzps.find(z => z.uid === reg.uid);
-      return [
+      invoiceRows.push([
         format(parseISO(reg.date), 'dd-MM-yyyy'),
         `Bemiddelingsfee uren: ${zzp?.displayName || 'ZZP'} @ ${clientName}`,
         `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`,
-        { content: `€ ${fee.toFixed(2)}`, styles: { halign: 'right' } }
-      ];
-    });
+        `€ ${fee.toFixed(2)}`
+      ]);
+    }
 
     autoTable(doc, {
       startY: 95,
       head: [['Datum', 'Omschrijving', 'Uren', 'Bedrag']],
       body: invoiceRows,
-      headStyles: { fillColor: [31, 41, 55], halign: 'left' },
+      headStyles: { fillColor: [31, 41, 55], halign: 'left' as const },
       columnStyles: {
         0: { cellWidth: 30 },
         1: { cellWidth: 100 },
-        2: { cellWidth: 25, halign: 'right' },
-        3: { cellWidth: 35, halign: 'right' }
+        2: { cellWidth: 25, halign: 'right' as const },
+        3: { cellWidth: 35, halign: 'right' as const }
       },
       margin: { left: 14, right: 14 }
     });
@@ -168,41 +170,29 @@ const Reports: React.FC = () => {
     const btw = subtotal * 0.21;
     const totaalbedrag = subtotal + btw;
     
-    doc.text('Subtotaal:', 140, finalY);
-    doc.text(`€ ${subtotal.toFixed(2)}`, 190, finalY, { align: 'right' });
-    doc.text('BTW (21%):', 140, finalY + 7);
-    doc.text(`€ ${btw.toFixed(2)}`, 190, finalY + 7, { align: 'right' });
+    const labelX = 140;
+    const amountX = 190;
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text('Subtotaal:', labelX, finalY);
+    doc.text(`€ ${subtotal.toFixed(2)}`, amountX, finalY, { align: 'right' });
+    
+    doc.text('BTW (21%):', labelX, finalY + 7);
+    doc.text(`€ ${btw.toFixed(2)}`, amountX, finalY + 7, { align: 'right' });
     
     doc.setFont('helvetica', 'bold');
-    doc.text('Totaalbedrag:', 140, finalY + 18);
-    doc.text(`€ ${totaalbedrag.toFixed(2)}`, 190, finalY + 18, { align: 'right' });
+    doc.text('Totaalbedrag:', labelX, finalY + 15);
+    doc.text(`€ ${totaalbedrag.toFixed(2)}`, amountX, finalY + 15, { align: 'right' });
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(80, 80, 80);
     
-    const paymentY = finalY + 35;
+    const paymentY = finalY + 30;
     
-    // Regel 1
-    doc.text('Gelieve het totaalbedrag van ', 14, paymentY);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`€ ${totaalbedrag.toFixed(2)}`, 14 + doc.getTextWidth('Gelieve het totaalbedrag van '), paymentY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(' binnen 14 dagen over te maken onder vermelding van factuurnummer ', 14 + doc.getTextWidth('Gelieve het totaalbedrag van € XX.XX '), paymentY);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`${invoiceNumber}`, 14 + doc.getTextWidth('Gelieve het totaalbedrag van € XX.XX binnen 14 dagen over te maken onder vermelding van factuurnummer '), paymentY);
-    
-    // Regel 2
-    doc.setFont('helvetica', 'normal');
-    doc.text(' naar rekeningnummer ', 14, paymentY + 7);
-    doc.setFont('helvetica', 'bold');
-    doc.text('NL20 SNSB 8838 9987 95', 14 + doc.getTextWidth(' naar rekeningnummer '), paymentY + 7);
-    
-    // Regel 3
-    doc.setFont('helvetica', 'normal');
-    doc.text(' ten name van ', 14, paymentY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('I. Bouda', 14 + doc.getTextWidth(' ten name van '), paymentY + 14);
+    doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber}`, 14, paymentY);
+    doc.text('naar rekeningnummer NL20 SNSB 8838 9987 95', 14, paymentY + 7);
+    doc.text('ten name van I. Bouda', 14, paymentY + 14);
 
     doc.save(`Factuur_Mijnzorgzuster_${selectedMonth}.pdf`);
   };
@@ -217,17 +207,19 @@ const Reports: React.FC = () => {
     
     addCompanyDetails(doc, 47);
     
-    const tableData = filteredRegistrations.map(reg => {
+    const tableData: any[][] = [];
+    
+    for (const reg of filteredRegistrations) {
       const { fee, clientName } = getFeeData(reg, 0.05);
       const zzp = zzps.find(z => z.uid === reg.uid);
-      return [
+      tableData.push([
         format(parseISO(reg.date), 'dd-MM-yyyy'), 
         zzp?.displayName || 'Onbekend', 
         clientName, 
-        { content: `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`, styles: { halign: 'right' } },
-        { content: `€ ${fee.toFixed(2)}`, styles: { halign: 'right' } }
-      ];
-    });
+        `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`, 
+        `€ ${fee.toFixed(2)}`
+      ]);
+    }
     
     autoTable(doc, {
       startY: 60,
@@ -238,8 +230,8 @@ const Reports: React.FC = () => {
         0: { cellWidth: 30 },
         1: { cellWidth: 60 },
         2: { cellWidth: 60 },
-        3: { cellWidth: 25, halign: 'right' },
-        4: { cellWidth: 35, halign: 'right' }
+        3: { cellWidth: 25, halign: 'right' as const },
+        4: { cellWidth: 35, halign: 'right' as const }
       }
     });
     
