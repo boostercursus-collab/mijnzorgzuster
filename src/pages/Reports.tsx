@@ -120,7 +120,7 @@ const Reports: React.FC = () => {
     doc.setFont('helvetica', 'bold');
     doc.text('Mijnzorgzuster.nl', 14, 45);
     doc.setFont('helvetica', 'normal');
-    doc.text('Administratie@mijnzorgzuster.nl', 14, 50);
+    doc.text('info@mijnzorgzuster.nl', 14, 50);
     
     addCompanyDetails(doc, 56);
 
@@ -147,58 +147,65 @@ const Reports: React.FC = () => {
       invoiceRows.push([
         format(parseISO(reg.date), 'dd-MM-yyyy'),
         `Bemiddelingsfee uren: ${zzp?.displayName || 'ZZP'} @ ${clientName}`,
-        `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`,
-        `€ ${fee.toFixed(2)}`
+        { content: `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`, styles: { halign: 'center' as const } },
+        { content: `€ ${fee.toFixed(2)}`, styles: { halign: 'center' as const } }
       ]);
     }
+
+    const btw = subtotal * 0.21;
+    const totaalbedrag = subtotal + btw;
+    
+    invoiceRows.push(['', '', '', '']);
+    invoiceRows.push([
+      '', 
+      { content: 'Subtotaal:', styles: { halign: 'right' as const, fontStyle: 'bold' as const } }, 
+      '', 
+      { content: `€ ${subtotal.toFixed(2)}`, styles: { halign: 'center' as const } }
+    ]);
+    invoiceRows.push([
+      '', 
+      { content: 'BTW (21%):', styles: { halign: 'right' as const, fontStyle: 'bold' as const } }, 
+      '', 
+      { content: `€ ${btw.toFixed(2)}`, styles: { halign: 'center' as const } }
+    ]);
+    invoiceRows.push([
+      '', 
+      { content: 'Totaalbedrag:', styles: { halign: 'right' as const, fontStyle: 'bold' as const } }, 
+      '', 
+      { content: `€ ${totaalbedrag.toFixed(2)}`, styles: { halign: 'center' as const, fontStyle: 'bold' as const } }
+    ]);
 
     autoTable(doc, {
       startY: 95,
       head: [['Datum', 'Omschrijving', 'Uren', 'Bedrag']],
       body: invoiceRows,
-      headStyles: { fillColor: [31, 41, 55], halign: 'left' as const },
+      headStyles: { 
+        fillColor: [31, 41, 55], 
+        halign: 'center' as const,
+        textColor: [255, 255, 255]
+      },
       columnStyles: {
         0: { cellWidth: 30 },
         1: { cellWidth: 100 },
-        2: { cellWidth: 25, halign: 'right' as const },
-        3: { cellWidth: 35, halign: 'right' as const }
+        2: { cellWidth: 25, halign: 'center' as const },
+        3: { cellWidth: 35, halign: 'center' as const }
       },
-      margin: { left: 14, right: 14 }
+      margin: { left: 14, right: 14 },
+      styles: {
+        fontSize: 10
+      }
     });
 
     const finalY = (doc as any).lastAutoTable.finalY + 10;
-    const btw = subtotal * 0.21;
-    const totaalbedrag = subtotal + btw;
     
-    // Uiterst rechts uitlijnen
-    const maxWidth = 190;
-    
-    doc.setFont('helvetica', 'normal');
-    
-    const subtotalText = `€ ${subtotal.toFixed(2)}`;
-    const subtotalLabelX = maxWidth - doc.getTextWidth(subtotalText) - 30;
-    doc.text('Subtotaal:', subtotalLabelX, finalY);
-    doc.text(subtotalText, maxWidth, finalY, { align: 'right' });
-    
-    const btwText = `€ ${btw.toFixed(2)}`;
-    const btwLabelX = maxWidth - doc.getTextWidth(btwText) - 30;
-    doc.text('BTW (21%):', btwLabelX, finalY + 7);
-    doc.text(btwText, maxWidth, finalY + 7, { align: 'right' });
-    
-    const totaalText = `€ ${totaalbedrag.toFixed(2)}`;
-    const totaalLabelX = maxWidth - doc.getTextWidth(totaalText) - 40;
-    doc.setFont('helvetica', 'bold');
-    doc.text('Totaalbedrag:', totaalLabelX, finalY + 15);
-    doc.text(totaalText, maxWidth, finalY + 15, { align: 'right' });
-    
-    // Betalingsinstructie - ALLES OP 1 REGEL
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(80, 80, 80);
     
-    const paymentY = finalY + 30;
-    const paymentText = `Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber} naar rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda`;
-    doc.text(paymentText, 14, paymentY);
+    const paymentY = finalY;
+    doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber}`, 14, paymentY);
+    doc.text('naar', 14, paymentY + 7);
+    doc.text('rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda', 14, paymentY + 14);
 
     doc.save(`Factuur_Mijnzorgzuster_${selectedMonth}.pdf`);
   };
@@ -236,8 +243,8 @@ const Reports: React.FC = () => {
         0: { cellWidth: 30 },
         1: { cellWidth: 60 },
         2: { cellWidth: 60 },
-        3: { cellWidth: 25, halign: 'right' as const },
-        4: { cellWidth: 35, halign: 'right' as const }
+        3: { cellWidth: 25, halign: 'center' as const },
+        4: { cellWidth: 35, halign: 'center' as const }
       }
     });
     
