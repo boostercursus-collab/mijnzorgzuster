@@ -203,8 +203,8 @@ const Reports: React.FC = () => {
     doc.setTextColor(80, 80, 80);
     
     const paymentY = finalY;
-    doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber} naar rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda`, 14, paymentY);
-
+    doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber} naar`, 14, paymentY);
+doc.text(`rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda`, 14, paymentY);
     doc.save(`Factuur_Mijnzorgzuster_${selectedMonth}.pdf`);
   };
 
