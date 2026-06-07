@@ -203,22 +203,30 @@ const Reports: React.FC = () => {
     doc.setTextColor(80, 80, 80);
     
     const paymentY = finalY;
-    doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber}`, 14, paymentY);
-    doc.text('naar', 14, paymentY + 7);
-    doc.text('rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda', 14, paymentY + 14);
+    doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber} naar rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda`, 14, paymentY);
 
     doc.save(`Factuur_Mijnzorgzuster_${selectedMonth}.pdf`);
   };
 
   const generatePDF = () => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait'
+    });
     
-    addLogoToPDF(doc, 14, 10, 30, 20);
+    addLogoToPDF(doc, 14, 10, 25, 15);
     
-    doc.setFontSize(18);
-    doc.text('Urenrapportage Mijnzorgzuster.nl', 14, 40);
+    doc.setFontSize(14);
+    doc.setTextColor(219, 39, 119);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Urenrapportage Mijnzorgzuster.nl', 14, 35);
     
-    addCompanyDetails(doc, 47);
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont('helvetica', 'normal');
+    doc.text('KvK 85123498 | Btw-nummer NL004054584B23 | Bank NL20 SNSB 8838 9987 95', 14, 43);
+    doc.setTextColor(0, 0, 0);
     
     const tableData: any[][] = [];
     
@@ -235,17 +243,26 @@ const Reports: React.FC = () => {
     }
     
     autoTable(doc, {
-      startY: 60,
+      startY: 50,
       head: [['Datum', 'ZZP\'er', 'Opdrachtgever', 'Uren', 'Fee (5%)']],
       body: tableData,
-      headStyles: { fillColor: [219, 39, 119] },
+      headStyles: { 
+        fillColor: [219, 39, 119],
+        fontSize: 8,
+        halign: 'center' as const,
+        textColor: [255, 255, 255]
+      },
+      bodyStyles: {
+        fontSize: 8
+      },
       columnStyles: {
-        0: { cellWidth: 30 },
-        1: { cellWidth: 60 },
-        2: { cellWidth: 60 },
+        0: { cellWidth: 30, halign: 'center' as const },
+        1: { cellWidth: 50 },
+        2: { cellWidth: 50 },
         3: { cellWidth: 25, halign: 'center' as const },
         4: { cellWidth: 35, halign: 'center' as const }
-      }
+      },
+      margin: { left: 14, right: 14 }
     });
     
     doc.save(`Urenrapportage_${selectedMonth}.pdf`);
