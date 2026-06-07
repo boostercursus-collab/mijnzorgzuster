@@ -170,29 +170,35 @@ const Reports: React.FC = () => {
     const btw = subtotal * 0.21;
     const totaalbedrag = subtotal + btw;
     
-    const labelX = 140;
-    const amountX = 190;
+    // Uiterst rechts uitlijnen
+    const maxWidth = 190;
     
     doc.setFont('helvetica', 'normal');
-    doc.text('Subtotaal:', labelX, finalY);
-    doc.text(`€ ${subtotal.toFixed(2)}`, amountX, finalY, { align: 'right' });
     
-    doc.text('BTW (21%):', labelX, finalY + 7);
-    doc.text(`€ ${btw.toFixed(2)}`, amountX, finalY + 7, { align: 'right' });
+    const subtotalText = `€ ${subtotal.toFixed(2)}`;
+    const subtotalLabelX = maxWidth - doc.getTextWidth(subtotalText) - 30;
+    doc.text('Subtotaal:', subtotalLabelX, finalY);
+    doc.text(subtotalText, maxWidth, finalY, { align: 'right' });
     
+    const btwText = `€ ${btw.toFixed(2)}`;
+    const btwLabelX = maxWidth - doc.getTextWidth(btwText) - 30;
+    doc.text('BTW (21%):', btwLabelX, finalY + 7);
+    doc.text(btwText, maxWidth, finalY + 7, { align: 'right' });
+    
+    const totaalText = `€ ${totaalbedrag.toFixed(2)}`;
+    const totaalLabelX = maxWidth - doc.getTextWidth(totaalText) - 40;
     doc.setFont('helvetica', 'bold');
-    doc.text('Totaalbedrag:', labelX, finalY + 15);
-    doc.text(`€ ${totaalbedrag.toFixed(2)}`, amountX, finalY + 15, { align: 'right' });
+    doc.text('Totaalbedrag:', totaalLabelX, finalY + 15);
+    doc.text(totaalText, maxWidth, finalY + 15, { align: 'right' });
     
+    // Betalingsinstructie - ALLES OP 1 REGEL
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(80, 80, 80);
     
     const paymentY = finalY + 30;
-    
-    doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber}`, 14, paymentY);
-    doc.text('naar rekeningnummer NL20 SNSB 8838 9987 95', 14, paymentY + 7);
-    doc.text('ten name van I. Bouda', 14, paymentY + 14);
+    const paymentText = `Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber} naar rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda`;
+    doc.text(paymentText, 14, paymentY);
 
     doc.save(`Factuur_Mijnzorgzuster_${selectedMonth}.pdf`);
   };
