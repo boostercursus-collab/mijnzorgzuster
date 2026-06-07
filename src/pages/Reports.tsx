@@ -127,16 +127,40 @@ const Reports: React.FC = () => {
     doc.setFont('helvetica', 'bold');
     doc.text('Factuur aan:', 14, 75);
     doc.setFont('helvetica', 'normal');
+    
+    let currentY = 80;
+    
     if (selectedZzpId !== 'all' && selectedZzp) {
-      doc.text(selectedZzp.displayName || selectedZzp.email, 14, 80);
-      doc.text('ZZP Dienstverlener', 14, 85);
+      doc.text(selectedZzp.displayName || selectedZzp.email, 14, currentY);
+      currentY += 5;
+      doc.text('ZZP Dienstverlener', 14, currentY);
+      currentY += 5;
     } else if (selectedClientId !== 'all' && selectedClient) {
-      doc.text(selectedClient.name, 14, 80);
-      doc.text(selectedClient.email || '', 14, 85);
+      // Naam instelling
+      doc.text(selectedClient.name, 14, currentY);
+      currentY += 6;
+      
+      // Adres weergeven (splitsen op nieuwe regels)
+      if (selectedClient.address) {
+        const addressLines = selectedClient.address.split('\n');
+        for (const line of addressLines) {
+          if (line.trim()) {
+            doc.text(line.trim(), 14, currentY);
+            currentY += 5;
+          }
+        }
+      }
+      
+      // E-mailadres tonen
+      if (selectedClient.email) {
+        doc.text(selectedClient.email, 14, currentY);
+        currentY += 5;
+      }
     } else {
-      doc.text('Verzamel-factuur', 14, 80);
+      doc.text('Verzamel-factuur', 14, currentY);
+      currentY += 5;
     }
-
+    
     let subtotal = 0;
     const invoiceRows: any[][] = [];
     
@@ -175,8 +199,11 @@ const Reports: React.FC = () => {
       { content: `€ ${totaalbedrag.toFixed(2)}`, styles: { halign: 'center' as const, fontStyle: 'bold' as const } }
     ]);
 
+    let tableStartY = currentY + 10;
+    if (tableStartY < 95) tableStartY = 95;
+    
     autoTable(doc, {
-      startY: 95,
+      startY: tableStartY,
       head: [['Datum', 'Omschrijving', 'Uren', 'Bedrag']],
       body: invoiceRows,
       headStyles: { 
@@ -198,15 +225,12 @@ const Reports: React.FC = () => {
 
     const finalY = (doc as any).lastAutoTable.finalY + 10;
     
-    // Betalingsinstructie - twee regels netjes onder elkaar
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(80, 80, 80);
     
     const paymentY = finalY;
-    // Eerste regel
     doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber} naar`, 14, paymentY);
-    // Tweede regel - 7 punten lager
     doc.text(`rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda`, 14, paymentY + 7);
 
     doc.save(`Factuur_Mijnzorgzuster_${selectedMonth}.pdf`);
