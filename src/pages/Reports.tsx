@@ -198,13 +198,17 @@ const Reports: React.FC = () => {
 
     const finalY = (doc as any).lastAutoTable.finalY + 10;
     
+    // Betalingsinstructie - twee regels netjes onder elkaar
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(80, 80, 80);
     
     const paymentY = finalY;
+    // Eerste regel
     doc.text(`Gelieve het totaalbedrag van € ${totaalbedrag.toFixed(2)} binnen 14 dagen over te maken onder vermelding van factuurnummer ${invoiceNumber} naar`, 14, paymentY);
-doc.text(`rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda`, 14, paymentY);
+    // Tweede regel - 7 punten lager
+    doc.text(`rekeningnummer NL20 SNSB 8838 9987 95 ten name van I. Bouda`, 14, paymentY + 7);
+
     doc.save(`Factuur_Mijnzorgzuster_${selectedMonth}.pdf`);
   };
 
