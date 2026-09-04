@@ -37,6 +37,7 @@ export interface Client {
   contactPerson?: string;
   email: string;
   phone?: string;
+  marginPercentage?: number;  // Marge % specifiek voor deze opdrachtgever (bijv. 5, 10, 15)
   createdAt?: string;
   updatedAt?: string;
 }
