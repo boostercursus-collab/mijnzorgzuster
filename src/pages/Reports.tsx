@@ -174,13 +174,13 @@ const Reports: React.FC = () => {
     const invoiceRows: any[][] = [];
     
     for (const reg of filteredRegistrations) {
-      const { fee, clientName, marginPercentage } = getFeeData(reg);
+      const { fee, clientName, marginPercentage, rate, hours } = getFeeData(reg);
       subtotal += fee;
       const zzp = zzps.find(z => z.uid === reg.uid);
       invoiceRows.push([
         format(parseISO(reg.date), 'dd-MM-yyyy'),
         `Bemiddelingsfee uren: ${zzp?.displayName || 'ZZP'} @ ${clientName}`,
-        { content: `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`, styles: { halign: 'center' as const } },
+        { content: `${hours.toFixed(1)}u @ €${rate.toFixed(2)}`, styles: { halign: 'center' as const } },
         { content: `€ ${fee.toFixed(2)}`, styles: { halign: 'center' as const } }
       ]);
     }
@@ -213,7 +213,7 @@ const Reports: React.FC = () => {
     
     autoTable(doc, {
       startY: tableStartY,
-      head: [['Datum', 'Omschrijving', 'Uren', 'Bedrag']],
+      head: [['Datum', 'Omschrijving', 'Uren & Tarief', 'Bedrag']],
       body: invoiceRows,
       headStyles: { 
         fillColor: [31, 41, 55], 
@@ -222,9 +222,9 @@ const Reports: React.FC = () => {
       },
       columnStyles: {
         0: { cellWidth: 30 },
-        1: { cellWidth: 100 },
-        2: { cellWidth: 25, halign: 'center' as const },
-        3: { cellWidth: 35, halign: 'center' as const }
+        1: { cellWidth: 80 },
+        2: { cellWidth: 40, halign: 'center' as const },
+        3: { cellWidth: 40, halign: 'center' as const }
       },
       margin: { left: 14, right: 14 },
       styles: {
@@ -268,13 +268,14 @@ const Reports: React.FC = () => {
     const tableData: any[][] = [];
     
     for (const reg of filteredRegistrations) {
-      const { fee, clientName, marginPercentage } = getFeeData(reg);
+      const { fee, clientName, marginPercentage, rate, hours } = getFeeData(reg);
       const zzp = zzps.find(z => z.uid === reg.uid);
       tableData.push([
         format(parseISO(reg.date), 'dd-MM-yyyy'), 
         zzp?.displayName || 'Onbekend', 
         clientName, 
-        `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`, 
+        `€${rate.toFixed(2)}`,
+        `${hours.toFixed(1)}u`, 
         `€ ${fee.toFixed(2)}`,
         `${marginPercentage.toFixed(1)}%`
       ]);
@@ -282,24 +283,25 @@ const Reports: React.FC = () => {
     
     autoTable(doc, {
       startY: 50,
-      head: [['Datum', 'ZZP\'er', 'Opdrachtgever', 'Uren', 'Fee', 'Marge %']],
+      head: [['Datum', 'ZZP\'er', 'Opdrachtgever', 'Tarief', 'Uren', 'Marge Bedrag', 'Marge %']],
       body: tableData,
       headStyles: { 
         fillColor: [219, 39, 119],
-        fontSize: 8,
+        fontSize: 7,
         halign: 'center' as const,
         textColor: [255, 255, 255]
       },
       bodyStyles: {
-        fontSize: 8
+        fontSize: 7
       },
       columnStyles: {
-        0: { cellWidth: 25, halign: 'center' as const },
-        1: { cellWidth: 45 },
-        2: { cellWidth: 45 },
-        3: { cellWidth: 20, halign: 'center' as const },
-        4: { cellWidth: 25, halign: 'center' as const },
-        5: { cellWidth: 20, halign: 'center' as const }
+        0: { cellWidth: 20, halign: 'center' as const },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 20, halign: 'right' as const },
+        4: { cellWidth: 15, halign: 'center' as const },
+        5: { cellWidth: 22, halign: 'right' as const },
+        6: { cellWidth: 15, halign: 'center' as const }
       },
       margin: { left: 14, right: 14 }
     });
@@ -366,12 +368,13 @@ const Reports: React.FC = () => {
            <span className="text-[10px] font-bold text-pink-600">Alleen status: Akkoord | Marge per opdrachtgever</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[900px]">
+          <table className="w-full text-left min-w-[1000px]">
             <thead className="text-[10px] font-black uppercase text-gray-400 border-b">
               <tr>
                 <th className="px-8 py-4">Datum</th>
                 <th className="px-8 py-4">ZZP'er</th>
                 <th className="px-8 py-4">Opdrachtgever</th>
+                <th className="px-8 py-4 text-right">Tarief</th>
                 <th className="px-8 py-4 text-right">Uren</th>
                 <th className="px-8 py-4 text-right">Marge %</th>
                 <th className="px-8 py-4 text-right">Marge Bedrag</th>
@@ -379,14 +382,15 @@ const Reports: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filteredRegistrations.map(reg => {
-                const { fee, clientName, marginPercentage } = getFeeData(reg);
+                const { fee, clientName, marginPercentage, rate, hours } = getFeeData(reg);
                 const zzp = zzps.find(z => z.uid === reg.uid);
                 return (
                   <tr key={reg.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-8 py-4 font-bold">{format(parseISO(reg.date), 'dd MMM yyyy', { locale: nl })}</td>
                     <td className="px-8 py-4 text-gray-600">{zzp?.displayName || zzp?.email}</td>
                     <td className="px-8 py-4 text-gray-600">{clientName}</td>
-                    <td className="px-8 py-4 text-right font-black">{Number(reg.duration || reg.totalHours || 0).toFixed(1)}u</td>
+                    <td className="px-8 py-4 text-right font-black text-gray-900">€{rate.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-8 py-4 text-right font-black text-gray-900">{hours.toFixed(1)}u</td>
                     <td className="px-8 py-4 text-right font-black text-pink-600">{marginPercentage.toFixed(1)}%</td>
                     <td className="px-8 py-4 text-right font-black text-pink-600">€ {fee.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
                   </tr>
