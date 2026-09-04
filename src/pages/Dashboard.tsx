@@ -35,6 +35,7 @@ const Dashboard: React.FC = () => {
 
         const assignmentsRef = collection(db, 'assignments');
         const registrationsRef = collection(db, 'timeRegistrations');
+        const clientsRef = collection(db, 'clients');
 
         const assignmentsQuery = adminStatus 
           ? query(assignmentsRef) 
@@ -44,22 +45,31 @@ const Dashboard: React.FC = () => {
           ? query(registrationsRef, orderBy('date', 'desc'))
           : query(registrationsRef, where('uid', '==', user.uid), orderBy('date', 'desc'));
 
-        const [assignmentsSnap, regsSnap] = await Promise.all([
+        const [assignmentsSnap, regsSnap, clientsSnap] = await Promise.all([
           getDocs(assignmentsQuery),
-          getDocs(regsQuery)
+          getDocs(regsQuery),
+          getDocs(clientsRef)
         ]);
 
         const assignmentsData = assignmentsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const regsData = regsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const clientsData = clientsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         const enriched = regsData.map(reg => {
           const assignment = assignmentsData.find(a => a.id === reg.assignmentId) as any;
+          const client = clientsData.find(c => c.id === assignment?.clientId) as any;
           const lineTotal = (reg.duration || 0) * (assignment?.rate || 0);
+          
+          // ZZP'ers krijgen 0% marge, Admin krijgt opdrachtgever-specifieke marge
+          const marginPercentage = adminStatus ? (client?.marginPercentage || 5) / 100 : 0;
+          
           return { 
             ...reg, 
             assignmentTitle: assignment?.title || 'Onbekende opdracht',
             zzpName: assignment?.zzpName || 'ZZP-er',
-            margin: lineTotal * 0.10,
+            tarief: assignment?.rate || 0,
+            margin: lineTotal * marginPercentage,
+            marginPercentage: marginPercentage * 100,
             totalValue: lineTotal
           };
         });
@@ -133,13 +143,13 @@ const Dashboard: React.FC = () => {
         <StatCard 
           icon={<Euro size={32}/>} 
           color="bg-green-500" 
-          label={isAdmin ? "Commissie (10%)" : "Mijn Omzet"} 
+          label={isAdmin ? "Marge (per opdrachtgever)" : "Mijn Omzet"} 
           value={`€${filteredData.totalRevenue.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}`} 
         />
         {isAdmin && <StatCard icon={<Users size={32}/>} color="bg-pink-600" label="Actieve ZZP-ers" value={filteredData.uniqueZzps.toString()} />}
       </div>
 
-      {/* Tabel sectie blijft ongewijzigd */}
+      {/* Tabel sectie met Tarief kolom */}
       <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
         <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/20">
           <h2 className="text-xl font-black uppercase tracking-tight text-gray-800 flex items-center gap-3">
@@ -154,8 +164,10 @@ const Dashboard: React.FC = () => {
                 <th className="px-8 py-6">Datum</th>
                 <th className="px-8 py-6">Opdracht</th>
                 {isAdmin && <th className="px-8 py-6">ZZP-er</th>}
+                <th className="px-8 py-6 text-right">Tarief</th>
                 <th className="px-8 py-6 text-right">Uren</th>
-                {isAdmin && <th className="px-8 py-6 text-right text-pink-600">Marge</th>}
+                {isAdmin && <th className="px-8 py-6 text-right text-pink-600">Marge %</th>}
+                {isAdmin && <th className="px-8 py-6 text-right text-pink-600">Marge Bedrag</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -164,11 +176,13 @@ const Dashboard: React.FC = () => {
                   <td className="px-8 py-5 font-bold text-gray-700">{act.date}</td>
                   <td className="px-8 py-5 font-medium text-gray-900">{act.assignmentTitle}</td>
                   {isAdmin && <td className="px-8 py-5"><span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-lg text-[10px] font-black uppercase">{act.zzpName}</span></td>}
+                  <td className="px-8 py-5 text-right font-black text-gray-900">€{act.tarief.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
                   <td className="px-8 py-5 text-right font-black text-gray-900">{act.duration}u</td>
+                  {isAdmin && <td className="px-8 py-5 text-right font-black text-pink-600">{act.marginPercentage.toFixed(1)}%</td>}
                   {isAdmin && <td className="px-8 py-5 text-right font-black text-pink-600">€{act.margin.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>}
                 </tr>
               )) : (
-                <tr><td colSpan={isAdmin ? 5 : 3} className="px-8 py-20 text-center text-gray-400 font-bold uppercase tracking-widest">Geen data voor deze maand</td></tr>
+                <tr><td colSpan={isAdmin ? 7 : 4} className="px-8 py-20 text-center text-gray-400 font-bold uppercase tracking-widest">Geen data voor deze maand</td></tr>
               )}
             </tbody>
           </table>
