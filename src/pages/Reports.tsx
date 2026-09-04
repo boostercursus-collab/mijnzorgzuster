@@ -52,13 +52,22 @@ const Reports: React.FC = () => {
     }
   };
 
-  const getFeeData = (reg: TimeRegistration, percentage: number = 0.10) => {
+  const getClientMarginPercentage = (clientId?: string): number => {
+    if (!clientId) return 0;
+    const client = clients.find(c => c.id === clientId);
+    return (client?.marginPercentage || 5) / 100; // Convert percentage to decimal
+  };
+
+  const getFeeData = (reg: TimeRegistration, percentage?: number) => {
     const assignment = assignments.find(a => String(a.id) === String(reg.assignmentId));
     const rate = assignment ? Number(assignment.rate || assignment.hourlyRate || 0) : 0;
     const hours = Number(reg.duration || reg.totalHours || 0);
-    const fee = (hours * rate) * percentage;
+    
+    // Use client-specific margin if percentage not provided
+    const effectivePercentage = percentage !== undefined ? percentage : getClientMarginPercentage(assignment?.clientId);
+    const fee = (hours * rate) * effectivePercentage;
     const client = clients.find(c => c.id === assignment?.clientId);
-    return { rate, hours, fee, assignment, clientName: client?.name || 'Onbekend' };
+    return { rate, hours, fee, assignment, clientName: client?.name || 'Onbekend', marginPercentage: effectivePercentage * 100 };
   };
 
   const filteredRegistrations = registrations.filter(reg => {
@@ -73,7 +82,7 @@ const Reports: React.FC = () => {
   });
 
   const totalHours = filteredRegistrations.reduce((acc, reg) => acc + (Number(reg.duration || reg.totalHours || 0)), 0);
-  const totalFeeInternal = filteredRegistrations.reduce((acc, reg) => acc + getFeeData(reg, 0.10).fee, 0);
+  const totalFeeInternal = filteredRegistrations.reduce((acc, reg) => acc + getFeeData(reg).fee, 0);
 
   const addCompanyDetails = (doc: jsPDF, startY: number) => {
     doc.setFontSize(9);
@@ -165,7 +174,7 @@ const Reports: React.FC = () => {
     const invoiceRows: any[][] = [];
     
     for (const reg of filteredRegistrations) {
-      const { fee, clientName } = getFeeData(reg, 0.05);
+      const { fee, clientName, marginPercentage } = getFeeData(reg);
       subtotal += fee;
       const zzp = zzps.find(z => z.uid === reg.uid);
       invoiceRows.push([
@@ -259,20 +268,21 @@ const Reports: React.FC = () => {
     const tableData: any[][] = [];
     
     for (const reg of filteredRegistrations) {
-      const { fee, clientName } = getFeeData(reg, 0.05);
+      const { fee, clientName, marginPercentage } = getFeeData(reg);
       const zzp = zzps.find(z => z.uid === reg.uid);
       tableData.push([
         format(parseISO(reg.date), 'dd-MM-yyyy'), 
         zzp?.displayName || 'Onbekend', 
         clientName, 
         `${Number(reg.duration || reg.totalHours || 0).toFixed(1)}u`, 
-        `€ ${fee.toFixed(2)}`
+        `€ ${fee.toFixed(2)}`,
+        `${marginPercentage.toFixed(1)}%`
       ]);
     }
     
     autoTable(doc, {
       startY: 50,
-      head: [['Datum', 'ZZP\'er', 'Opdrachtgever', 'Uren', 'Fee (5%)']],
+      head: [['Datum', 'ZZP\'er', 'Opdrachtgever', 'Uren', 'Fee', 'Marge %']],
       body: tableData,
       headStyles: { 
         fillColor: [219, 39, 119],
@@ -284,11 +294,12 @@ const Reports: React.FC = () => {
         fontSize: 8
       },
       columnStyles: {
-        0: { cellWidth: 30, halign: 'center' as const },
-        1: { cellWidth: 50 },
-        2: { cellWidth: 50 },
-        3: { cellWidth: 25, halign: 'center' as const },
-        4: { cellWidth: 35, halign: 'center' as const }
+        0: { cellWidth: 25, halign: 'center' as const },
+        1: { cellWidth: 45 },
+        2: { cellWidth: 45 },
+        3: { cellWidth: 20, halign: 'center' as const },
+        4: { cellWidth: 25, halign: 'center' as const },
+        5: { cellWidth: 20, halign: 'center' as const }
       },
       margin: { left: 14, right: 14 }
     });
@@ -309,7 +320,7 @@ const Reports: React.FC = () => {
         </div>
         <div className="flex gap-3">
           <button onClick={generateInvoice} className="bg-white border-2 border-black text-black px-6 py-4 rounded-2xl flex gap-2 text-xs font-black uppercase hover:bg-gray-50 transition-all shadow-sm">
-            <FileText size={18} /> Factuur PDF (5%)
+            <FileText size={18} /> Factuur PDF
           </button>
           <button onClick={generatePDF} className="bg-black text-white px-6 py-4 rounded-2xl flex gap-2 text-xs font-black uppercase shadow-xl hover:opacity-80 transition-all">
             <Download size={18} /> Uren PDF
@@ -344,7 +355,7 @@ const Reports: React.FC = () => {
           <TrendingUp size={60} className="opacity-20" />
         </div>
         <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm flex items-center justify-between">
-          <div><p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Interne Marge (10%)</p><p className="text-4xl font-black text-pink-600">€ {totalFeeInternal.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</p></div>
+          <div><p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Totale Marge (per opdrachtgever)</p><p className="text-4xl font-black text-pink-600">€ {totalFeeInternal.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</p></div>
           <Percent size={48} className="text-pink-600 opacity-10" />
         </div>
       </div>
@@ -352,22 +363,23 @@ const Reports: React.FC = () => {
       <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
         <div className="px-8 py-5 bg-gray-50 border-b flex justify-between items-center">
            <h2 className="text-[10px] font-black uppercase text-gray-400">Preview goedgekeurde uren</h2>
-           <span className="text-[10px] font-bold text-pink-600">Alleen status: Akkoord</span>
+           <span className="text-[10px] font-bold text-pink-600">Alleen status: Akkoord | Marge per opdrachtgever</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[800px]">
+          <table className="w-full text-left min-w-[900px]">
             <thead className="text-[10px] font-black uppercase text-gray-400 border-b">
               <tr>
                 <th className="px-8 py-4">Datum</th>
                 <th className="px-8 py-4">ZZP'er</th>
                 <th className="px-8 py-4">Opdrachtgever</th>
                 <th className="px-8 py-4 text-right">Uren</th>
-                <th className="px-8 py-4 text-right">Marge (10%)</th>
+                <th className="px-8 py-4 text-right">Marge %</th>
+                <th className="px-8 py-4 text-right">Marge Bedrag</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filteredRegistrations.map(reg => {
-                const { fee, clientName } = getFeeData(reg, 0.10);
+                const { fee, clientName, marginPercentage } = getFeeData(reg);
                 const zzp = zzps.find(z => z.uid === reg.uid);
                 return (
                   <tr key={reg.id} className="hover:bg-gray-50 transition-colors">
@@ -375,6 +387,7 @@ const Reports: React.FC = () => {
                     <td className="px-8 py-4 text-gray-600">{zzp?.displayName || zzp?.email}</td>
                     <td className="px-8 py-4 text-gray-600">{clientName}</td>
                     <td className="px-8 py-4 text-right font-black">{Number(reg.duration || reg.totalHours || 0).toFixed(1)}u</td>
+                    <td className="px-8 py-4 text-right font-black text-pink-600">{marginPercentage.toFixed(1)}%</td>
                     <td className="px-8 py-4 text-right font-black text-pink-600">€ {fee.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</td>
                   </tr>
                 );
