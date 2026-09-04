@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Client } from '../types';
-import { Plus, Pencil, Trash2, X, Building2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Building2, Percent } from 'lucide-react';
 
 const Clients: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
@@ -13,7 +13,8 @@ const Clients: React.FC = () => {
     name: '',
     email: '',
     address: '',
-    contactPerson: ''
+    contactPerson: '',
+    marginPercentage: 5
   });
 
   useEffect(() => {
@@ -36,14 +37,22 @@ const Clients: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const dataToSave = {
+        name: formData.name,
+        email: formData.email,
+        address: formData.address,
+        contactPerson: formData.contactPerson,
+        marginPercentage: Math.max(0, Math.min(100, Number(formData.marginPercentage) || 5))
+      };
+
       if (editingClient) {
-        await updateDoc(doc(db, 'clients', editingClient.id), formData);
+        await updateDoc(doc(db, 'clients', editingClient.id), dataToSave);
       } else {
-        await addDoc(collection(db, 'clients'), formData);
+        await addDoc(collection(db, 'clients'), dataToSave);
       }
       setIsModalOpen(false);
       setEditingClient(null);
-      setFormData({ name: '', email: '', address: '', contactPerson: '' });
+      setFormData({ name: '', email: '', address: '', contactPerson: '', marginPercentage: 5 });
       fetchClients();
     } catch (error) {
       console.error('Error saving client:', error);
@@ -56,7 +65,8 @@ const Clients: React.FC = () => {
       name: client.name,
       email: client.email,
       address: client.address || '',
-      contactPerson: client.contactPerson || ''
+      contactPerson: client.contactPerson || '',
+      marginPercentage: client.marginPercentage || 5
     });
     setIsModalOpen(true);
   };
@@ -79,7 +89,7 @@ const Clients: React.FC = () => {
         <button
           onClick={() => {
             setEditingClient(null);
-            setFormData({ name: '', email: '', address: '', contactPerson: '' });
+            setFormData({ name: '', email: '', address: '', contactPerson: '', marginPercentage: 5 });
             setIsModalOpen(true);
           }}
           className="flex items-center space-x-2 rounded-lg bg-pink-600 px-4 py-2 text-sm font-medium text-white hover:bg-pink-700 transition-colors"
@@ -122,6 +132,10 @@ const Clients: React.FC = () => {
                 <p className="flex items-center space-x-2">
                   <span className="font-medium">Adres:</span>
                   <span>{client.address || 'Niet opgegeven'}</span>
+                </p>
+                <p className="flex items-center space-x-2 bg-pink-50 rounded px-3 py-2 mt-2">
+                  <Percent className="h-4 w-4 text-pink-600" />
+                  <span className="font-bold text-pink-600">{client.marginPercentage || 5}% marge</span>
                 </p>
               </div>
             </div>
@@ -179,6 +193,23 @@ const Clients: React.FC = () => {
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
                   rows={3}
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Marge Percentage (%)</label>
+                <div className="mt-1 flex items-center space-x-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    required
+                    value={formData.marginPercentage}
+                    onChange={(e) => setFormData({ ...formData, marginPercentage: parseFloat(e.target.value) || 5 })}
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  />
+                  <span className="text-sm font-bold text-pink-600">%</span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Voer het marginpercentage in voor deze opdrachtgever (bijv. 5, 10, 15)</p>
               </div>
               <div className="flex space-x-3 pt-4">
                 <button
